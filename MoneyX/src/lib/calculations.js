@@ -1,6 +1,7 @@
 /**
  * Calculate initial expendables from salary
- * Formula: Salary - (Fixed Expenses + DPS + Credit Card Bills + Future Savings + Temporary Expenses)
+ * Formula: Salary - (Fixed Expenses + DPS + Credit Card Bills)
+ * NOTE: Future Savings and Temporary Expenses are NOT deducted
  */
 export function calculateInitialExpendables({
     salaryAmount = 0,
@@ -23,6 +24,7 @@ export function calculateInitialExpendables({
       0
     );
   
+    // NOT DEDUCTING THESE FROM EXPENDABLES
     const totalFutureSavings = futureSavings
       .filter(saving => saving.isActive)
       .reduce((sum, saving) => sum + (saving.allocatedAmount || 0), 0);
@@ -35,17 +37,16 @@ export function calculateInitialExpendables({
       salaryAmount -
       totalFixedExpenses -
       totalDPS -
-      totalCreditCardBills -
-      totalFutureSavings -
-      totalTemporary;
+      totalCreditCardBills;
+      // NOT subtracting totalFutureSavings and totalTemporary
   
     return {
       initialExpendables: Math.max(0, expendables),
       totalFixedExpenses,
       totalDPS,
       totalCreditCardBills,
-      totalFutureSavings,
-      totalTemporary,
+      totalFutureSavings, // Just for tracking, not deducted
+      totalTemporary, // Just for tracking, not deducted
     };
   }
   

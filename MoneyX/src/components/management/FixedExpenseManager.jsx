@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { CurrencyInput } from '@/components/common/CurrencyInput';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/components/common/Toast';
 import { collection, query, where, getDocs, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -19,8 +20,11 @@ export const FixedExpenseManager = () => {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [formData, setFormData] = useState({ name: '', amount: '' });
+  const [editFormData, setEditFormData] = useState({ name: '', amount: '' });
 
   useEffect(() => {
     if (user) {
@@ -77,6 +81,41 @@ export const FixedExpenseManager = () => {
     }
   };
 
+  const handleEdit = async (e) => {
+    e.preventDefault();
+
+    if (!editFormData.name || !editFormData.amount || parseFloat(editFormData.amount) <= 0) {
+      toast.error('Please enter valid expense details');
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, `users/${user.uid}/fixedExpenses/${editingExpense.id}`), {
+        name: editFormData.name,
+        amount: parseFloat(editFormData.amount),
+        updatedAt: Timestamp.now(),
+      });
+
+      toast.success('Expense updated successfully!');
+      setShowEditDialog(false);
+      setEditingExpense(null);
+      setEditFormData({ name: '', amount: '' });
+      await loadExpenses();
+    } catch (error) {
+      console.error('Error updating expense:', error);
+      toast.error('Failed to update expense');
+    }
+  };
+
+  const openEditDialog = (expense) => {
+    setEditingExpense(expense);
+    setEditFormData({
+      name: expense.name,
+      amount: expense.amount.toString(),
+    });
+    setShowEditDialog(true);
+  };
+
   const handleDelete = async () => {
     if (!deleteId) return;
 
@@ -98,10 +137,12 @@ export const FixedExpenseManager = () => {
   const totalAmount = expenses.reduce((sum, exp) => sum + exp.amount, 0);
 
   if (loading) {
-    return <div className="animate-pulse space-y-3">
-      <div className="h-32 bg-muted rounded-lg" />
-      <div className="h-32 bg-muted rounded-lg" />
-    </div>;
+    return (
+      <div className="animate-pulse space-y-3">
+        <div className="h-32 bg-muted rounded-lg" />
+        <div className="h-32 bg-muted rounded-lg" />
+      </div>
+    );
   }
 
   return (
@@ -192,25 +233,83 @@ export const FixedExpenseManager = () => {
             <Card key={expense.id}>
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="flex-1">
                     <p className="font-medium">{expense.name}</p>
                     <p className="text-sm text-muted-foreground">
                       {formatCurrency(expense.amount)}/month
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setDeleteId(expense.id)}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openEditDialog(expense)}
+                    >
+                      <Edit2 className="h-4 w-4 text-primary" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setDeleteId(expense.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent onClose={() => setShowEditDialog(false)}>
+          <DialogHeader>
+            <DialogTitle>Edit Fixed Expense</DialogTitle>
+            <DialogDescription>Update expense details</DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleEdit} className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="editName">Expense Name</Label>
+              <Input
+                id="editName"
+                placeholder="e.g., Rent, Netflix, Internet"
+                value={editFormData.name}
+                onChange={(e) =>
+                  setEditFormData({ ...editFormData, name: e.target.value })
+                }
+              />
+            </div>
+
+            <CurrencyInput
+              label="Monthly Amount"
+              placeholder="0"
+              value={editFormData.amount}
+              onChange={(value) => setEditFormData({ ...editFormData, amount: value })}
+            />
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowEditDialog(false);
+                  setEditingExpense(null);
+                  setEditFormData({ name: '', amount: '' });
+                }}
+                className="w-full"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="w-full">
+                Save Changes
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation */}
       <ConfirmDialog
