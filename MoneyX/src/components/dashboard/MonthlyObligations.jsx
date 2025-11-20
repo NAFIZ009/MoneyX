@@ -87,7 +87,16 @@ export const MonthlyObligations = () => {
     }
   };
 
+  // OPTIMISTIC UPDATE - Update UI immediately, sync in background
   const handleTogglePaid = async (obligation) => {
+    // 1. Optimistically update the UI immediately
+    setObligations((prev) =>
+      prev.map((o) =>
+        o.id === obligation.id ? { ...o, isPaid: !o.isPaid } : o
+      )
+    );
+
+    // 2. Sync to Firebase in the background
     try {
       const monthKey = getMonthKey();
       const collectionPath =
@@ -105,9 +114,20 @@ export const MonthlyObligations = () => {
         createdAt: new Date(),
       });
 
-      await loadObligations();
+      // Success - no need to reload, UI is already updated
+      console.log('✅ Payment status synced to Firebase');
     } catch (error) {
-      console.error('Error toggling payment status:', error);
+      console.error('❌ Error syncing payment status:', error);
+      
+      // 3. If sync fails, revert the optimistic update
+      setObligations((prev) =>
+        prev.map((o) =>
+          o.id === obligation.id ? { ...o, isPaid: obligation.isPaid } : o
+        )
+      );
+      
+      // Show error to user (optional - add toast notification)
+      alert('Failed to update payment status. Please try again.');
     }
   };
 
@@ -126,10 +146,22 @@ export const MonthlyObligations = () => {
     ? filteredObligations
     : filteredObligations.slice(0, 3);
 
+  // Calculate statistics
   const paidCount = obligations.filter((o) => o.isPaid).length;
+  const unpaidCount = obligations.length - paidCount;
   const totalCount = obligations.length;
+  
+  const paidAmount = obligations
+    .filter((o) => o.isPaid)
+    .reduce((sum, o) => sum + o.amount, 0);
+  
+  const unpaidAmount = obligations
+    .filter((o) => !o.isPaid)
+    .reduce((sum, o) => sum + o.amount, 0);
+  
   const totalAmount = obligations.reduce((sum, o) => sum + o.amount, 0);
 
+  // Initial loading state
   if (loading) {
     return (
       <Card>
@@ -155,15 +187,39 @@ export const MonthlyObligations = () => {
           <div>
             <CardTitle>Monthly Obligations</CardTitle>
             <CardDescription>
-              {paidCount}/{totalCount} paid • {formatCurrency(totalAmount)} total
+              {paidCount}/{totalCount} completed • {formatCurrency(totalAmount)} total
             </CardDescription>
           </div>
           <Badge variant={paidCount === totalCount ? 'success' : 'secondary'}>
-            {paidCount === totalCount ? 'All Done' : 'Pending'}
+            {paidCount === totalCount ? 'All Done' : `${unpaidCount} Pending`}
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* Summary Stats */}
+        <div className="grid grid-cols-3 gap-2 p-3 bg-muted/50 rounded-lg">
+          <div className="text-center">
+            <p className="text-xs text-muted-foreground">Paid</p>
+            <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+              {formatCurrency(paidAmount)}
+            </p>
+            <p className="text-xs text-muted-foreground">{paidCount} items</p>
+          </div>
+          <div className="text-center border-x">
+            <p className="text-xs text-muted-foreground">Unpaid</p>
+            <p className="text-sm font-semibold text-orange-600 dark:text-orange-400">
+              {formatCurrency(unpaidAmount)}
+            </p>
+            <p className="text-xs text-muted-foreground">{unpaidCount} items</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-muted-foreground">Total</p>
+            <p className="text-sm font-semibold">
+              {formatCurrency(totalAmount)}
+            </p>
+            <p className="text-xs text-muted-foreground">{totalCount} items</p>
+          </div>
+        </div>
         {/* Search Input */}
         {obligations.length > 3 && (
           <div className="relative">

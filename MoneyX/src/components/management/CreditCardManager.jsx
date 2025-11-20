@@ -7,13 +7,15 @@ import { CurrencyInput } from '@/components/common/CurrencyInput';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useToast } from '@/components/common/Toast';
 import { collection, query, where, getDocs, addDoc, updateDoc, doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { formatCurrency, getMonthKey } from '@/lib/utils';
-import { Plus, Trash2, CreditCard, DollarSign } from 'lucide-react';
+import { Plus, Trash2, CreditCard, DollarSign, FileText, Edit2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const CARD_COLORS = [
   { value: '#4ECDC4', label: 'Teal' },
@@ -31,6 +33,7 @@ export const CreditCardManager = () => {
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [showBillDialog, setShowBillDialog] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
   const [formData, setFormData] = useState({
@@ -39,6 +42,10 @@ export const CreditCardManager = () => {
     color: CARD_COLORS[0].value,
   });
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [billData, setBillData] = useState({
+    previousBill: '',
+    thisMonthTransactions: '',
+  });
 
   useEffect(() => {
     if (user) {
@@ -118,6 +125,61 @@ export const CreditCardManager = () => {
     }
   };
 
+  const handleAddBill = async (e) => {
+    e.preventDefault();
+
+    if (!selectedCard) return;
+
+    const previousBill = parseFloat(billData.previousBill) || 0;
+    const thisMonthTransactions = parseFloat(billData.thisMonthTransactions) || 0;
+
+    if (previousBill < 0 || thisMonthTransactions < 0) {
+      toast.error('Amounts cannot be negative');
+      return;
+    }
+
+    if (previousBill === 0 && thisMonthTransactions === 0) {
+      toast.error('Please enter at least one amount');
+      return;
+    }
+
+    try {
+      const monthKey = getMonthKey();
+      const billRef = doc(
+        db,
+        `users/${user.uid}/creditCards/${selectedCard.id}/bills/${monthKey}`
+      );
+
+      const totalPending = previousBill + thisMonthTransactions;
+
+      await setDoc(
+        billRef,
+        {
+          monthKey,
+          previousBill,
+          thisMonthTransactions,
+          totalPending,
+          paidAmount: 0,
+          remainingBalance: totalPending,
+          isPaidFull: false,
+          manuallyAdded: true,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        },
+        { merge: true }
+      );
+
+      toast.success('Bill added successfully!');
+      setBillData({ previousBill: '', thisMonthTransactions: '' });
+      setShowBillDialog(false);
+      setSelectedCard(null);
+      await loadCards();
+    } catch (error) {
+      console.error('Error adding bill:', error);
+      toast.error('Failed to add bill');
+    }
+  };
+
   const handlePayment = async () => {
     if (!selectedCard || !paymentAmount || parseFloat(paymentAmount) <= 0) {
       toast.error('Please enter a valid payment amount');
@@ -183,6 +245,15 @@ export const CreditCardManager = () => {
       console.error('Error deleting card:', error);
       toast.error('Failed to delete credit card');
     }
+  };
+
+  const openBillDialog = (card) => {
+    setSelectedCard(card);
+    setBillData({
+      previousBill: card.bill.previousBill?.toString() || '',
+      thisMonthTransactions: card.bill.thisMonthTransactions?.toString() || '',
+    });
+    setShowBillDialog(true);
   };
 
   const totalPending = cards.reduce((sum, card) => sum + (card.bill?.totalPending || 0), 0);
@@ -329,7 +400,7 @@ export const CreditCardManager = () => {
                   </div>
 
                   {/* Bill Details */}
-                  {card.bill.totalPending > 0 && (
+                  {card.bill.totalPending > 0 ? (
                     <>
                       <div className="space-y-2 p-3 bg-muted rounded-lg">
                         <div className="flex justify-between text-sm">
@@ -338,6 +409,12 @@ export const CreditCardManager = () => {
                             {formatCurrency(card.bill.totalPending)}
                           </span>
                         </div>
+                        {card.bill.previousBill > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Previous Bill</span>
+                            <span>{formatCurrency(card.bill.previousBill)}</span>
+                          </div>
+                        )}
                         {card.bill.thisMonthTransactions > 0 && (
                           <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">This Month</span>
@@ -354,25 +431,43 @@ export const CreditCardManager = () => {
                         )}
                       </div>
 
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          onClick={() => openBillDialog(card)}
+                          variant="outline"
+                          size="sm"
+                        >
+                          <Edit2 className="h-4 w-4 mr-2" />
+                          Edit Bill
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            setSelectedCard(card);
+                            setShowPaymentDialog(true);
+                          }}
+                          variant="outline"
+                          size="sm"
+                        >
+                          <DollarSign className="h-4 w-4 mr-2" />
+                          Pay Bill
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Badge variant="success" className="w-full justify-center">
+                        No Pending Bill
+                      </Badge>
                       <Button
-                        onClick={() => {
-                          setSelectedCard(card);
-                          setShowPaymentDialog(true);
-                        }}
+                        onClick={() => openBillDialog(card)}
                         variant="outline"
                         size="sm"
                         className="w-full"
                       >
-                        <DollarSign className="h-4 w-4 mr-2" />
-                        Pay Bill
+                        <FileText className="h-4 w-4 mr-2" />
+                        Add Bill Manually
                       </Button>
                     </>
-                  )}
-
-                  {card.bill.totalPending === 0 && (
-                    <Badge variant="success" className="w-full justify-center">
-                      No Pending Bill
-                    </Badge>
                   )}
                 </div>
               </CardContent>
@@ -380,6 +475,74 @@ export const CreditCardManager = () => {
           ))}
         </div>
       )}
+
+      {/* Add/Edit Bill Dialog */}
+      <Dialog open={showBillDialog} onOpenChange={setShowBillDialog}>
+        <DialogContent onClose={() => setShowBillDialog(false)}>
+          <DialogHeader>
+            <DialogTitle>
+              {selectedCard?.bill?.totalPending > 0 ? 'Edit' : 'Add'} Credit Card Bill
+            </DialogTitle>
+            <DialogDescription>
+              {selectedCard?.name} - Enter bill details for this month
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAddBill} className="space-y-4 py-4">
+            <Alert>
+              <AlertDescription className="text-xs">
+                💡 Add your credit card statement details here. This will help track your monthly bills.
+              </AlertDescription>
+            </Alert>
+
+            <CurrencyInput
+              label="Previous Bill / Outstanding Balance"
+              placeholder="0"
+              value={billData.previousBill}
+              onChange={(value) => setBillData({ ...billData, previousBill: value })}
+            />
+
+            <CurrencyInput
+              label="This Month's Transactions"
+              placeholder="0"
+              value={billData.thisMonthTransactions}
+              onChange={(value) =>
+                setBillData({ ...billData, thisMonthTransactions: value })
+              }
+            />
+
+            <div className="bg-muted p-3 rounded-lg space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total Bill</span>
+                <span className="font-medium">
+                  {formatCurrency(
+                    (parseFloat(billData.previousBill) || 0) +
+                      (parseFloat(billData.thisMonthTransactions) || 0)
+                  )}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowBillDialog(false);
+                  setBillData({ previousBill: '', thisMonthTransactions: '' });
+                  setSelectedCard(null);
+                }}
+                className="w-full"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="w-full">
+                {selectedCard?.bill?.totalPending > 0 ? 'Update Bill' : 'Add Bill'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Payment Dialog */}
       <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>

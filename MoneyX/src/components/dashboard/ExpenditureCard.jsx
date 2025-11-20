@@ -35,8 +35,10 @@ export const ExpenditureCard = () => {
   const { currentExpendables, initialExpendables, reservedAmount } =
     currentMonth.calculations;
 
-  const totalSpent = initialExpendables - currentExpendables - reservedAmount;
+  // Calculate total spent (including reserved amounts)
+  const totalSpent = initialExpendables - currentExpendables;
   const spentPercentage = calculatePercentage(totalSpent, initialExpendables);
+  
   const isWarning = hasReachedSpendingWarning({
     currentExpendables,
     initialExpendables,
@@ -46,20 +48,24 @@ export const ExpenditureCard = () => {
     <div className="space-y-3">
       <Card className="overflow-hidden">
         <CardContent className="pt-6 space-y-6">
-          {/* Today's Spending */}
-          {todaySpending > 0 && (
-            <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-              <div className="flex items-center gap-2">
-                <TrendingDown className="h-4 w-4 text-destructive" />
-                <span className="text-sm font-medium">Spent Today</span>
+          {/* 1. TODAY'S SPENDING - FIRST (as requested) */}
+          <div className="flex items-center justify-between p-4 bg-gradient-to-r from-red-50 to-red-100 dark:from-red-950 dark:to-red-900 rounded-lg border border-red-200 dark:border-red-800">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
+                <TrendingDown className="h-5 w-5 text-red-600 dark:text-red-400" />
               </div>
-              <span className="font-semibold text-destructive">
-                {formatCurrency(todaySpending)}
-              </span>
+              <div>
+                <p className="text-xs font-medium text-red-900 dark:text-red-100">
+                  Spent Today
+                </p>
+                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                  {formatCurrency(todaySpending)}
+                </p>
+              </div>
             </div>
-          )}
+          </div>
 
-          {/* Main Spendable Amount */}
+          {/* 2. MAIN EXPENDABLES - SECOND (as requested) */}
           <div className="text-center space-y-2">
             <p className="text-sm font-medium text-muted-foreground">
               Spendable This Month
@@ -74,7 +80,7 @@ export const ExpenditureCard = () => {
             </p>
           </div>
 
-          {/* Progress Bar */}
+          {/* 3. PROGRESS BAR - THIRD (as requested) */}
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Month Progress</span>
@@ -95,14 +101,14 @@ export const ExpenditureCard = () => {
             </div>
           </div>
 
-          {/* Reserved Amount */}
+          {/* Reserved Amount for Credit Cards */}
           {reservedAmount > 0 && (
             <div className="p-3 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg">
               <div className="flex justify-between items-center text-sm">
-                <span className="text-yellow-900 dark:text-yellow-100">
+                <span className="text-yellow-900 dark:text-yellow-100 font-medium">
                   💳 Reserved (Credit Cards)
                 </span>
-                <span className="font-medium text-yellow-900 dark:text-yellow-100">
+                <span className="font-semibold text-yellow-900 dark:text-yellow-100">
                   {formatCurrency(reservedAmount)}
                 </span>
               </div>

@@ -8,8 +8,8 @@ export function calculateInitialExpendables({
     fixedExpenses = [],
     dpsAccounts = [],
     creditCardBills = [],
-    futureSavings = [],
-    temporaryExpenses = [],
+    futureSavings = [],  // Not used in calculation
+    temporaryExpenses = [],  // Not used in calculation
   }) {
     const totalFixedExpenses = fixedExpenses
       .filter(exp => exp.isActive)
@@ -24,29 +24,21 @@ export function calculateInitialExpendables({
       0
     );
   
-    // NOT DEDUCTING THESE FROM EXPENDABLES
-    const totalFutureSavings = futureSavings
-      .filter(saving => saving.isActive)
-      .reduce((sum, saving) => sum + (saving.allocatedAmount || 0), 0);
+    // Calculate ONLY with Fixed Expenses + DPS + Credit Cards
+    const expendables = salaryAmount - totalFixedExpenses - totalDPS - totalCreditCardBills;
   
-    const totalTemporary = temporaryExpenses
-      .filter(exp => exp.isActive)
-      .reduce((sum, exp) => sum + (exp.amount || 0), 0);
-  
-    const expendables =
-      salaryAmount -
-      totalFixedExpenses -
-      totalDPS -
-      totalCreditCardBills;
-      // NOT subtracting totalFutureSavings and totalTemporary
-  
+    // Return all values for tracking, but only use first three in calculation
     return {
       initialExpendables: Math.max(0, expendables),
       totalFixedExpenses,
       totalDPS,
       totalCreditCardBills,
-      totalFutureSavings, // Just for tracking, not deducted
-      totalTemporary, // Just for tracking, not deducted
+      totalFutureSavings: futureSavings
+        .filter(saving => saving.isActive)
+        .reduce((sum, saving) => sum + (saving.allocatedAmount || 0), 0),
+      totalTemporaryExpenses: temporaryExpenses
+        .filter(exp => exp.isActive)
+        .reduce((sum, exp) => sum + (exp.amount || 0), 0),
     };
   }
   
