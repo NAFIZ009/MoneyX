@@ -40,7 +40,7 @@ export const QuickAddExpense = ({ open, onOpenChange }) => {
     category: 'others',
     fromCreditCard: false,
     creditCardId: '',
-    date: getTodayString(), // Default to today
+    date: getTodayString(),
   });
 
   const handleSubmit = async (e) => {
@@ -59,7 +59,7 @@ export const QuickAddExpense = ({ open, onOpenChange }) => {
     // Validate date is not in the future
     const selectedDate = new Date(formData.date);
     const today = new Date();
-    today.setHours(23, 59, 59, 999); // End of today
+    today.setHours(23, 59, 59, 999);
     
     if (selectedDate > today) {
       toast.error('Cannot add expenses for future dates');
@@ -97,7 +97,8 @@ export const QuickAddExpense = ({ open, onOpenChange }) => {
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Form with proper padding and spacing */}
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 pt-2 sm:pt-4 space-y-3 sm:space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Description</Label>
             <Input
@@ -118,7 +119,7 @@ export const QuickAddExpense = ({ open, onOpenChange }) => {
             disabled={loading}
           />
 
-          {/* NEW: Date Picker */}
+          {/* Date Picker */}
           <div className="space-y-2">
             <Label htmlFor="date">Date</Label>
             <div className="relative">
@@ -126,7 +127,7 @@ export const QuickAddExpense = ({ open, onOpenChange }) => {
                 id="date"
                 type="date"
                 value={formData.date}
-                max={getTodayString()} // Prevent future dates
+                max={getTodayString()}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                 disabled={loading}
                 className="pl-10"
@@ -169,7 +170,7 @@ export const QuickAddExpense = ({ open, onOpenChange }) => {
                   }
                   disabled={loading}
                 />
-                <Label htmlFor="fromCreditCard" className="cursor-pointer">
+                <Label htmlFor="fromCreditCard" className="cursor-pointer text-sm">
                   Paid with Credit Card
                 </Label>
               </div>
@@ -204,7 +205,8 @@ export const QuickAddExpense = ({ open, onOpenChange }) => {
             </>
           )}
 
-          <div className="flex gap-2 pt-2">
+          {/* Sticky Footer Buttons */}
+          <div className="flex gap-2 pt-4 sticky bottom-0 bg-background pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 border-t sm:border-t-0 mt-4">
             <Button
               type="button"
               variant="outline"

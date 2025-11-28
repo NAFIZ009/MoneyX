@@ -275,13 +275,13 @@ export const FixedExpenseManager = () => {
 
             {/* Edit Dialog */}
             <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-                <DialogContent onClose={() => setShowEditDialog(false)}>
+                <DialogContent onClose={() => setShowEditDialog(false)} className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>Edit Fixed Expense</DialogTitle>
                         <DialogDescription>Update expense details</DialogDescription>
                     </DialogHeader>
 
-                    <form onSubmit={handleEdit} className="space-y-4 py-4">
+                    <form onSubmit={handleEdit} className="p-4 sm:p-6 pt-2 sm:pt-4 space-y-4">
                         <div className="space-y-2">
                             <Label htmlFor="editName">Expense Name</Label>
                             <Input
@@ -301,7 +301,8 @@ export const FixedExpenseManager = () => {
                             onChange={(value) => setEditFormData({ ...editFormData, amount: value })}
                         />
 
-                        <div className="flex gap-2">
+                        {/* Sticky Footer Buttons */}
+                        <div className="flex gap-2 pt-4 sticky bottom-0 bg-background pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 sm:pb-0 border-t sm:border-t-0 mt-4">
                             <Button
                                 type="button"
                                 variant="outline"
