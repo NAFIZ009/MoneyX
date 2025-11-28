@@ -17,18 +17,30 @@ import { useCreditCards } from '@/hooks/useCreditCards';
 import { useToast } from '@/components/common/Toast';
 import { EXPENSE_CATEGORIES } from '@/lib/categories';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Calendar } from 'lucide-react';
 
 export const QuickAddExpense = ({ open, onOpenChange }) => {
   const { addExpense } = useExpenses();
   const { cards } = useCreditCards();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
+  
+  // Get today's date in YYYY-MM-DD format
+  const getTodayString = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const [formData, setFormData] = useState({
     name: '',
     amount: '',
     category: 'others',
     fromCreditCard: false,
     creditCardId: '',
+    date: getTodayString(), // Default to today
   });
 
   const handleSubmit = async (e) => {
@@ -44,6 +56,16 @@ export const QuickAddExpense = ({ open, onOpenChange }) => {
       return;
     }
 
+    // Validate date is not in the future
+    const selectedDate = new Date(formData.date);
+    const today = new Date();
+    today.setHours(23, 59, 59, 999); // End of today
+    
+    if (selectedDate > today) {
+      toast.error('Cannot add expenses for future dates');
+      return;
+    }
+
     try {
       setLoading(true);
       await addExpense(formData);
@@ -55,6 +77,7 @@ export const QuickAddExpense = ({ open, onOpenChange }) => {
         category: 'others',
         fromCreditCard: false,
         creditCardId: '',
+        date: getTodayString(),
       });
     } catch (error) {
       console.error('Error adding expense:', error);
@@ -94,6 +117,26 @@ export const QuickAddExpense = ({ open, onOpenChange }) => {
             onChange={(value) => setFormData({ ...formData, amount: value })}
             disabled={loading}
           />
+
+          {/* NEW: Date Picker */}
+          <div className="space-y-2">
+            <Label htmlFor="date">Date</Label>
+            <div className="relative">
+              <Input
+                id="date"
+                type="date"
+                value={formData.date}
+                max={getTodayString()} // Prevent future dates
+                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                disabled={loading}
+                className="pl-10"
+              />
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {formData.date === getTodayString() ? '📅 Today' : '📅 Past expense'}
+            </p>
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="category">Category (Optional)</Label>

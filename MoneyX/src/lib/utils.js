@@ -175,3 +175,28 @@ export function getEndOfDay(date = new Date()) {
   newDate.setHours(23, 59, 59, 999);
   return newDate;
 }
+
+/**
+ * Check if a date matches a specific date (ignoring time)
+ */
+export function isSameDate(date1, date2) {
+  const d1 = date1 instanceof Date ? date1 : date1.toDate();
+  const d2 = date2 instanceof Date ? date2 : date2.toDate();
+  
+  return (
+    d1.getDate() === d2.getDate() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getFullYear() === d2.getFullYear()
+  );
+}
+
+/**
+ * Format date for input field (YYYY-MM-DD)
+ */
+export function formatDateForInput(date) {
+  const d = date instanceof Date ? date : date.toDate();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}

@@ -66,18 +66,22 @@ export const useExpenses = () => {
     try {
       if (!user) throw new Error('User not authenticated');
 
-      const now = new Date();
-      const monthKey = getMonthKey();
+      // UPDATED: Use custom date if provided, otherwise use current date
+      const expenseDate = expenseData.date 
+        ? new Date(expenseData.date + 'T12:00:00') // Add time to avoid timezone issues
+        : new Date();
+      
+      const monthKey = getMonthKey(expenseDate); // Get month key from expense date
 
       const newExpense = {
         name: expenseData.name,
         amount: parseFloat(expenseData.amount),
         category: expenseData.category || 'others',
-        date: Timestamp.fromDate(now),
+        date: Timestamp.fromDate(expenseDate), // Use custom date
         monthKey,
-        year: now.getFullYear(),
-        month: now.getMonth() + 1,
-        day: now.getDate(),
+        year: expenseDate.getFullYear(),
+        month: expenseDate.getMonth() + 1,
+        day: expenseDate.getDate(),
         paymentMethod: {
           type: expenseData.fromCreditCard ? 'creditCard' : 'cash',
           creditCardId: expenseData.creditCardId || null,
@@ -92,30 +96,33 @@ export const useExpenses = () => {
         newExpense
       );
 
-      // Update month calculations
-      if (expenseData.fromCreditCard) {
-        // Reserve amount from expendables and update credit card bill
-        await Promise.all([
-          updateMonthCalculations({
-            'calculations.reservedAmount': increment(newExpense.amount),
+      // Update month calculations (only for current month)
+      const currentMonthKey = getMonthKey();
+      if (monthKey === currentMonthKey) {
+        if (expenseData.fromCreditCard) {
+          // Reserve amount from expendables and update credit card bill
+          await Promise.all([
+            updateMonthCalculations({
+              'calculations.reservedAmount': increment(newExpense.amount),
+              'calculations.currentExpendables': increment(-newExpense.amount),
+            }),
+            updateDoc(
+              doc(db, `users/${user.uid}/creditCards/${expenseData.creditCardId}/bills/${monthKey}`),
+              {
+                thisMonthTransactions: increment(newExpense.amount),
+                totalPending: increment(newExpense.amount),
+                updatedAt: Timestamp.now(),
+              }
+            ),
+          ]);
+        } else {
+          // Deduct from expendables
+          await updateMonthCalculations({
             'calculations.currentExpendables': increment(-newExpense.amount),
-          }),
-          updateDoc(
-            doc(db, `users/${user.uid}/creditCards/${expenseData.creditCardId}/bills/${monthKey}`),
-            {
-              thisMonthTransactions: increment(newExpense.amount),
-              totalPending: increment(newExpense.amount),
-              updatedAt: Timestamp.now(),
-            }
-          ),
-        ]);
-      } else {
-        // Deduct from expendables
-        await updateMonthCalculations({
-          'calculations.currentExpendables': increment(-newExpense.amount),
-          'statistics.totalDailyExpenses': increment(newExpense.amount),
-          'statistics.expenseCount': increment(1),
-        });
+            'statistics.totalDailyExpenses': increment(newExpense.amount),
+            'statistics.expenseCount': increment(1),
+          });
+        }
       }
 
       // Reload expenses
@@ -156,18 +163,21 @@ export const useExpenses = () => {
       // Delete expense
       await deleteDoc(doc(db, `users/${user.uid}/dailyExpenses/${expenseId}`));
 
-      // Update calculations (reverse the deductions)
-      if (expense.paymentMethod.type === 'creditCard') {
-        await updateMonthCalculations({
-          'calculations.reservedAmount': increment(-expense.amount),
-          'calculations.currentExpendables': increment(expense.amount),
-        });
-      } else {
-        await updateMonthCalculations({
-          'calculations.currentExpendables': increment(expense.amount),
-          'statistics.totalDailyExpenses': increment(-expense.amount),
-          'statistics.expenseCount': increment(-1),
-        });
+      // Update calculations (reverse the deductions) - only for current month
+      const currentMonthKey = getMonthKey();
+      if (expense.monthKey === currentMonthKey) {
+        if (expense.paymentMethod.type === 'creditCard') {
+          await updateMonthCalculations({
+            'calculations.reservedAmount': increment(-expense.amount),
+            'calculations.currentExpendables': increment(expense.amount),
+          });
+        } else {
+          await updateMonthCalculations({
+            'calculations.currentExpendables': increment(expense.amount),
+            'statistics.totalDailyExpenses': increment(-expense.amount),
+            'statistics.expenseCount': increment(-1),
+          });
+        }
       }
 
       await loadExpenses();
