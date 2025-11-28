@@ -21,7 +21,7 @@ const Tabs = ({ defaultValue, value, onValueChange, children, className }) => {
       {React.Children.map(children, (child) =>
         React.isValidElement(child)
           ? React.cloneElement(child, { 
-              selectedValue, // Pass as selectedValue
+              selectedValue, // Pass selectedValue to all children
               onValueChange: handleValueChange 
             })
           : child
@@ -49,7 +49,7 @@ const TabsList = React.forwardRef(({ className, children, selectedValue, onValue
 TabsList.displayName = "TabsList";
 
 const TabsTrigger = React.forwardRef(
-  ({ className, value, selectedValue, onValueChange, ...props }, ref) => {
+  ({ className, value, selectedValue, onValueChange, children, ...props }, ref) => {
     const isActive = selectedValue === value;
 
     return (
@@ -58,7 +58,10 @@ const TabsTrigger = React.forwardRef(
         type="button"
         role="tab"
         aria-selected={isActive}
-        onClick={() => onValueChange?.(value)}
+        onClick={() => {
+          console.log('Tab clicked:', value); // Debug log
+          onValueChange?.(value);
+        }}
         className={cn(
           "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 flex-1",
           isActive
@@ -67,14 +70,19 @@ const TabsTrigger = React.forwardRef(
           className
         )}
         {...props}
-      />
+      >
+        {children}
+      </button>
     );
   }
 );
 TabsTrigger.displayName = "TabsTrigger";
 
 const TabsContent = React.forwardRef(
-  ({ className, value, selectedValue, ...props }, ref) => {
+  ({ className, value, selectedValue, children, ...props }, ref) => {
+    // Debug log
+    console.log('TabsContent render:', { value, selectedValue, isVisible: selectedValue === value });
+    
     if (selectedValue !== value) return null;
 
     return (
@@ -83,7 +91,9 @@ const TabsContent = React.forwardRef(
         role="tabpanel"
         className={cn("mt-2 ring-offset-background focus-visible:outline-none", className)}
         {...props}
-      />
+      >
+        {children}
+      </div>
     );
   }
 );
