@@ -15,28 +15,30 @@ export default function Management() {
 
       <main className="max-w-lg mx-auto">
         <Tabs defaultValue="salary" className="w-full">
-          <div className="sticky top-14 z-20 bg-background border-b">
-            <div className="overflow-x-auto">
-              <TabsList className="w-full rounded-none h-12 inline-flex min-w-full">
-                <TabsTrigger value="salary" className="flex-1">
+          {/* Sticky Tab Navigation */}
+          <div className="sticky top-14 z-20 bg-background border-b safe-top">
+            <div className="overflow-x-auto scrollbar-hide">
+              <TabsList className="w-full rounded-none h-12 min-w-max sm:min-w-full p-1">
+                <TabsTrigger value="salary" className="flex-1 min-w-[80px]">
                   Salary
                 </TabsTrigger>
-                <TabsTrigger value="expenses" className="flex-1">
+                <TabsTrigger value="expenses" className="flex-1 min-w-[80px]">
                   Expenses
                 </TabsTrigger>
-                <TabsTrigger value="dps" className="flex-1">
+                <TabsTrigger value="dps" className="flex-1 min-w-[80px]">
                   DPS
                 </TabsTrigger>
-                <TabsTrigger value="cards" className="flex-1">
+                <TabsTrigger value="cards" className="flex-1 min-w-[80px]">
                   Cards
                 </TabsTrigger>
-                <TabsTrigger value="savings" className="flex-1">
+                <TabsTrigger value="savings" className="flex-1 min-w-[80px]">
                   Savings
                 </TabsTrigger>
               </TabsList>
             </div>
           </div>
 
+          {/* Tab Content */}
           <TabsContent value="salary" className="mt-0">
             <div className="p-4">
               <SalaryManager />

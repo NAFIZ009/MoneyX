@@ -4,6 +4,13 @@ import { cn } from "@/lib/utils";
 const Tabs = ({ defaultValue, value, onValueChange, children, className }) => {
   const [selectedValue, setSelectedValue] = React.useState(defaultValue || value);
 
+  // Update internal state if controlled value changes
+  React.useEffect(() => {
+    if (value !== undefined) {
+      setSelectedValue(value);
+    }
+  }, [value]);
+
   const handleValueChange = (newValue) => {
     setSelectedValue(newValue);
     onValueChange?.(newValue);
@@ -13,14 +20,17 @@ const Tabs = ({ defaultValue, value, onValueChange, children, className }) => {
     <div className={cn("w-full", className)}>
       {React.Children.map(children, (child) =>
         React.isValidElement(child)
-          ? React.cloneElement(child, { value: selectedValue, onValueChange: handleValueChange })
+          ? React.cloneElement(child, { 
+              selectedValue, // Pass as selectedValue
+              onValueChange: handleValueChange 
+            })
           : child
       )}
     </div>
   );
 };
 
-const TabsList = React.forwardRef(({ className, ...props }, ref) => (
+const TabsList = React.forwardRef(({ className, children, selectedValue, onValueChange, ...props }, ref) => (
   <div
     ref={ref}
     className={cn(
@@ -28,13 +38,19 @@ const TabsList = React.forwardRef(({ className, ...props }, ref) => (
       className
     )}
     {...props}
-  />
+  >
+    {React.Children.map(children, (child) =>
+      React.isValidElement(child)
+        ? React.cloneElement(child, { selectedValue, onValueChange })
+        : child
+    )}
+  </div>
 ));
 TabsList.displayName = "TabsList";
 
 const TabsTrigger = React.forwardRef(
-  ({ className, value: triggerValue, onValueChange, value: selectedValue, ...props }, ref) => {
-    const isActive = selectedValue === triggerValue;
+  ({ className, value, selectedValue, onValueChange, ...props }, ref) => {
+    const isActive = selectedValue === value;
 
     return (
       <button
@@ -42,12 +58,12 @@ const TabsTrigger = React.forwardRef(
         type="button"
         role="tab"
         aria-selected={isActive}
-        onClick={() => onValueChange?.(triggerValue)}
+        onClick={() => onValueChange?.(value)}
         className={cn(
           "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 flex-1",
           isActive
             ? "bg-background text-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground",
+            : "text-muted-foreground hover:text-foreground hover:bg-background/50",
           className
         )}
         {...props}
@@ -58,8 +74,8 @@ const TabsTrigger = React.forwardRef(
 TabsTrigger.displayName = "TabsTrigger";
 
 const TabsContent = React.forwardRef(
-  ({ className, value: contentValue, value: selectedValue, ...props }, ref) => {
-    if (selectedValue !== contentValue) return null;
+  ({ className, value, selectedValue, ...props }, ref) => {
+    if (selectedValue !== value) return null;
 
     return (
       <div

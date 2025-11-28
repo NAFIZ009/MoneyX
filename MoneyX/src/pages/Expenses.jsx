@@ -56,8 +56,9 @@ export default function Expenses() {
           />
         ) : (
           <Tabs defaultValue="list" className="w-full">
-            <div className="sticky top-14 z-20 bg-background border-b">
-              <TabsList className="w-full rounded-none h-12">
+            {/* Sticky Tab Navigation */}
+            <div className="sticky top-14 z-20 bg-background border-b safe-top">
+              <TabsList className="w-full rounded-none h-12 p-1">
                 <TabsTrigger value="list" className="flex-1">
                   Transactions
                 </TabsTrigger>
@@ -67,6 +68,7 @@ export default function Expenses() {
               </TabsList>
             </div>
 
+            {/* Tab Content */}
             <TabsContent value="list" className="mt-0">
               <div className="p-4 space-y-4">
                 <ExpenseFilters filters={filters} onFiltersChange={setFilters} />
