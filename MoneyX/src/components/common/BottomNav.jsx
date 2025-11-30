@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Receipt, Settings, TrendingUp } from 'lucide-react';
+import { Home, Receipt, Settings, TrendingUp, Wallet } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +11,7 @@ export const BottomNav = () => {
     { path: '/dashboard', icon: Home, label: 'Home' },
     { path: '/expenses', icon: Receipt, label: 'Expenses' },
     { path: '/management', icon: TrendingUp, label: 'Manage' },
+    { path: '/debts', icon: Wallet, label: 'Debts' },
     { path: '/settings', icon: Settings, label: 'Settings' },
   ];
 

@@ -16,6 +16,7 @@ import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
 import Expenses from './pages/Expenses';
 import Management from './pages/Management';
+import Debts from './pages/Debts'; // NEW
 import Settings from './pages/Settings';
 
 function AppRoutes() {
@@ -68,6 +69,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Management />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/debts"
+          element={
+            <ProtectedRoute>
+              <Debts />
             </ProtectedRoute>
           }
         />
