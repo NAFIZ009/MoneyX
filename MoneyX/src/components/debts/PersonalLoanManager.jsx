@@ -7,11 +7,16 @@ import { Select } from '@/components/ui/select';
 import { CurrencyInput } from '@/components/common/CurrencyInput';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { LoanAllocationDialog } from '@/components/debts/LoanAllocationDialog';
 import { useToast } from '@/components/common/Toast';
 import { usePersonalLoans } from '@/hooks/usePersonalLoans';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { useFinance } from '@/hooks/useFinance';
+import { formatCurrency, formatDate, getMonthKey } from '@/lib/utils';
 import { Plus, Trash2, Wallet, DollarSign, Calendar, TrendingDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { doc, setDoc, updateDoc, increment, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useAuth } from '@/hooks/useAuth';
 
 const LOAN_TYPES = [
   { value: 'personal', label: 'Personal Loan' },
@@ -23,11 +28,15 @@ const LOAN_TYPES = [
 ];
 
 export const PersonalLoanManager = () => {
+  const { user } = useAuth();
   const { loans, loading, addLoan, recordPayment, deleteLoan } = usePersonalLoans();
+  const { updateMonthCalculations } = useFinance();
   const toast = useToast();
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showAllocationDialog, setShowAllocationDialog] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [paymentLoanId, setPaymentLoanId] = useState(null);
+  const [pendingLoanData, setPendingLoanData] = useState(null);
   const [formData, setFormData] = useState({
     lenderName: '',
     loanType: 'personal',
@@ -55,9 +64,80 @@ export const PersonalLoanManager = () => {
       return;
     }
 
+    // Store form data and show allocation dialog
+    setPendingLoanData(formData);
+    setShowAllocationDialog(true);
+  };
+
+  const handleAllocationConfirm = async (allocation) => {
     try {
-      await addLoan(formData);
-      toast.success('Loan added successfully!');
+      // 1. Add the loan first
+      await addLoan(pendingLoanData);
+      
+      const monthKey = getMonthKey();
+      const loanAmount = parseFloat(pendingLoanData.principalAmount);
+
+      // 2. Handle expendables
+      if (allocation.addToExpendables) {
+        await updateMonthCalculations({
+          'calculations.currentExpendables': increment(allocation.allocation.remaining),
+        });
+      }
+
+      // 3. Pay selected obligations
+      if (allocation.selectedObligations.length > 0) {
+        for (const obligationId of allocation.selectedObligations) {
+          // Mark as paid (you'll need to know if it's expense or dps)
+          // For now, we'll try both paths
+          try {
+            await setDoc(
+              doc(db, `users/${user.uid}/fixedExpenses/${obligationId}/payments/${monthKey}`),
+              {
+                monthKey,
+                isPaid: true,
+                paidDate: Timestamp.now(),
+                paymentMethod: 'loan',
+                createdAt: Timestamp.now(),
+              }
+            );
+          } catch (e) {
+            await setDoc(
+              doc(db, `users/${user.uid}/dpsAccounts/${obligationId}/payments/${monthKey}`),
+              {
+                monthKey,
+                isPaid: true,
+                paidDate: Timestamp.now(),
+                paymentMethod: 'loan',
+                createdAt: Timestamp.now(),
+              }
+            );
+          }
+        }
+      }
+
+      // 4. Pay selected credit card bills
+      if (allocation.selectedCards.length > 0) {
+        for (const cardId of allocation.selectedCards) {
+          const billRef = doc(db, `users/${user.uid}/creditCards/${cardId}/bills/${monthKey}`);
+          
+          // Get current bill to calculate payment
+          const billDoc = await getDoc(billRef);
+          if (billDoc.exists()) {
+            const bill = billDoc.data();
+            const paymentAmount = bill.totalPending;
+
+            await updateDoc(billRef, {
+              paidAmount: increment(paymentAmount),
+              totalPending: 0,
+              remainingBalance: 0,
+              isPaidFull: true,
+              updatedAt: Timestamp.now(),
+            });
+          }
+        }
+      }
+
+      toast.success('Loan added and allocated successfully!');
       setFormData({
         lenderName: '',
         loanType: 'personal',
@@ -67,8 +147,9 @@ export const PersonalLoanManager = () => {
         startDate: new Date().toISOString().split('T')[0],
       });
       setShowAddForm(false);
+      setPendingLoanData(null);
     } catch (error) {
-      console.error('Error adding loan:', error);
+      console.error('Error adding loan with allocation:', error);
       toast.error('Failed to add loan');
     }
   };
@@ -202,6 +283,9 @@ export const PersonalLoanManager = () => {
                   value={formData.loanTermMonths}
                   onChange={(e) => setFormData({ ...formData, loanTermMonths: e.target.value })}
                 />
+                <p className="text-xs text-muted-foreground">
+                  How many months to pay back? (e.g., 1 = pay next month, 12 = 1 year)
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -234,7 +318,7 @@ export const PersonalLoanManager = () => {
                   Cancel
                 </Button>
                 <Button type="submit" className="w-full">
-                  Add Loan
+                  Next: Allocate Funds
                 </Button>
               </div>
             </form>
@@ -354,6 +438,16 @@ export const PersonalLoanManager = () => {
             );
           })}
         </div>
+      )}
+
+      {/* Allocation Dialog */}
+      {showAllocationDialog && pendingLoanData && (
+        <LoanAllocationDialog
+          open={showAllocationDialog}
+          onOpenChange={setShowAllocationDialog}
+          loanAmount={parseFloat(pendingLoanData.principalAmount)}
+          onConfirm={handleAllocationConfirm}
+        />
       )}
 
       {/* Payment Confirmation Dialog */}
