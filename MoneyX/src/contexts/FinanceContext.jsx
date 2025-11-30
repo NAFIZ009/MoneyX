@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
-import { getMonthKey } from '@/lib/utils';
+import { getMonthKey, getPreviousMonthKey, formatCurrency } from '@/lib/utils';
 import { calculateInitialExpendables } from '@/lib/calculations';
 
 export const FinanceContext = createContext(null);
@@ -112,7 +112,12 @@ export const FinanceProvider = ({ children }) => {
         try {
             if (!user) throw new Error('User not authenticated');
 
-            // Fetch all necessary data for calculation
+            console.log('💰 Setting salary:', amount);
+
+            // STEP 1: Rollover credit card bills from previous month
+            await rolloverCreditCardBills();
+
+            // STEP 2: Fetch all necessary data for calculation
             const [fixedExpenses, dpsAccounts, creditCards] = await Promise.all([
                 getFixedExpenses(),
                 getDPSAccounts(),
@@ -129,7 +134,7 @@ export const FinanceProvider = ({ children }) => {
                 .filter(dps => dps.isActive)
                 .reduce((sum, dps) => sum + (dps.monthlyAmount || 0), 0);
 
-            // Get credit card bills for current month
+            // STEP 3: Get credit card bills for current month (INCLUDING rolled over balances)
             const monthKey = getMonthKey();
             const creditCardBills = await Promise.all(
                 creditCards
@@ -148,13 +153,14 @@ export const FinanceProvider = ({ children }) => {
 
             const totalCreditCardBills = creditCardBills.reduce((sum, bill) => sum + bill, 0);
 
+            // STEP 4: Calculate expendables
             // CORRECT FORMULA: Salary - (Fixed Expenses + DPS + Credit Card Bills)
             const initialExpendables = amount - totalFixedExpenses - totalDPS - totalCreditCardBills;
 
             // Get last month savings (TODO: implement if needed)
             const lastMonthSavings = 0;
 
-            // Update month with ALL calculation details
+            // STEP 5: Update month with ALL calculation details
             await updateMonthCalculations({
                 salaryReceived: true,
                 salaryAmount: amount,
@@ -170,7 +176,7 @@ export const FinanceProvider = ({ children }) => {
                 'calculations.lastMonthSavings': lastMonthSavings,
             });
 
-            console.log('✅ Salary calculation:', {
+            console.log('✅ Salary set successfully:', {
                 salary: amount,
                 fixedExpenses: totalFixedExpenses,
                 dps: totalDPS,
@@ -210,7 +216,7 @@ export const FinanceProvider = ({ children }) => {
                 .filter(dps => dps.isActive)
                 .reduce((sum, dps) => sum + (dps.monthlyAmount || 0), 0);
 
-            // Get credit card bills for current month
+            // Get credit card bills for current month (INCLUDING any rolled over balances)
             const monthKey = getMonthKey();
             const creditCardBills = await Promise.all(
                 creditCards
@@ -260,6 +266,78 @@ export const FinanceProvider = ({ children }) => {
         }
     };
 
+    const rolloverCreditCardBills = async () => {
+        try {
+            if (!user) return;
+
+            const currentMonthKey = getMonthKey();
+            const previousMonthKey = getPreviousMonthKey(currentMonthKey);
+
+            console.log('🔄 Checking for credit card bill rollover...');
+            console.log('Previous month:', previousMonthKey);
+            console.log('Current month:', currentMonthKey);
+
+            // Get all active credit cards
+            const creditCards = await getCreditCards();
+
+            for (const card of creditCards) {
+                // Check if current month bill already exists
+                const currentBillRef = doc(
+                    db,
+                    `users/${user.uid}/creditCards/${card.id}/bills/${currentMonthKey}`
+                );
+                const currentBillDoc = await getDoc(currentBillRef);
+
+                // Skip if current month bill already exists (already rolled over or manually added)
+                if (currentBillDoc.exists()) {
+                    console.log(`✓ Bill for ${card.name} already exists for ${currentMonthKey}`);
+                    continue;
+                }
+
+                // Get previous month's bill
+                const previousBillRef = doc(
+                    db,
+                    `users/${user.uid}/creditCards/${card.id}/bills/${previousMonthKey}`
+                );
+                const previousBillDoc = await getDoc(previousBillRef);
+
+                if (previousBillDoc.exists()) {
+                    const previousBill = previousBillDoc.data();
+                    const remainingBalance = previousBill.remainingBalance || previousBill.totalPending || 0;
+
+                    if (remainingBalance > 0) {
+                        // Create new month bill with carried forward balance
+                        await setDoc(currentBillRef, {
+                            monthKey: currentMonthKey,
+                            previousBill: remainingBalance, // Carry forward the remaining balance
+                            thisMonthTransactions: 0,
+                            totalPending: remainingBalance,
+                            paidAmount: 0,
+                            remainingBalance: remainingBalance,
+                            isPaidFull: false,
+                            carriedForward: true, // Flag to indicate this was carried forward
+                            carriedFromMonth: previousMonthKey,
+                            createdAt: Timestamp.now(),
+                            updatedAt: Timestamp.now(),
+                        });
+
+                        console.log(`✅ Rolled over ${formatCurrency(remainingBalance)} for ${card.name}`);
+                    } else {
+                        console.log(`✓ No pending balance for ${card.name}`);
+                    }
+                } else {
+                    console.log(`✓ No previous bill found for ${card.name}`);
+                }
+            }
+
+            console.log('✅ Credit card rollover complete');
+        } catch (err) {
+            console.error('❌ Error rolling over credit card bills:', err);
+            // Don't throw - rollover failure shouldn't break salary setting
+        }
+    };
+
+
     // Helper functions to fetch data
     const getFixedExpenses = async () => {
         if (!user) return [];
@@ -308,7 +386,8 @@ export const FinanceProvider = ({ children }) => {
         setSalary,
         updateMonthCalculations,
         refreshMonth: loadCurrentMonth,
-        recalculateExpendables
+        recalculateExpendables,
+        rolloverCreditCardBills
     };
 
     return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;

@@ -72,13 +72,13 @@ export const CreditCardManager = () => {
           const bill = billDoc.exists()
             ? billDoc.data()
             : {
-                previousBill: 0,
-                thisMonthTransactions: 0,
-                totalPending: 0,
-                paidAmount: 0,
-                remainingBalance: 0,
-                isPaidFull: false,
-              };
+              previousBill: 0,
+              thisMonthTransactions: 0,
+              totalPending: 0,
+              paidAmount: 0,
+              remainingBalance: 0,
+              isPaidFull: false,
+            };
 
           return {
             id: cardDoc.id,
@@ -328,11 +328,10 @@ export const CreditCardManager = () => {
                       key={color.value}
                       type="button"
                       onClick={() => setFormData({ ...formData, color: color.value })}
-                      className={`h-10 w-10 rounded-full transition-all ${
-                        formData.color === color.value
+                      className={`h-10 w-10 rounded-full transition-all ${formData.color === color.value
                           ? 'ring-4 ring-primary ring-offset-2'
                           : ''
-                      }`}
+                        }`}
                       style={{ backgroundColor: color.value }}
                       title={color.label}
                     />
@@ -402,6 +401,18 @@ export const CreditCardManager = () => {
                   {/* Bill Details */}
                   {card.bill.totalPending > 0 ? (
                     <>
+                      {/* Show carried forward notice if applicable */}
+                      {card.bill.carriedForward && card.bill.previousBill > 0 && (
+                        <div className="p-2 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg">
+                          <p className="text-xs text-orange-900 dark:text-orange-100 flex items-center gap-1">
+                            <span>⚠️</span>
+                            <span>
+                              {formatCurrency(card.bill.previousBill)} carried forward from previous month
+                            </span>
+                          </p>
+                        </div>
+                      )}
+
                       <div className="space-y-2 p-3 bg-muted rounded-lg">
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Total Pending</span>
@@ -412,7 +423,9 @@ export const CreditCardManager = () => {
                         {card.bill.previousBill > 0 && (
                           <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">Previous Bill</span>
-                            <span>{formatCurrency(card.bill.previousBill)}</span>
+                            <span className="text-orange-600 dark:text-orange-400">
+                              {formatCurrency(card.bill.previousBill)}
+                            </span>
                           </div>
                         )}
                         {card.bill.thisMonthTransactions > 0 && (
@@ -517,7 +530,7 @@ export const CreditCardManager = () => {
                 <span className="font-medium">
                   {formatCurrency(
                     (parseFloat(billData.previousBill) || 0) +
-                      (parseFloat(billData.thisMonthTransactions) || 0)
+                    (parseFloat(billData.thisMonthTransactions) || 0)
                   )}
                 </span>
               </div>
