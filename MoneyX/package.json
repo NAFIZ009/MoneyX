@@ -11,7 +11,8 @@
     "firebase:login": "firebase login",
     "firebase:projects": "firebase projects:list",
     "firebase:use": "firebase use",
-    "firestore:indexes": "firebase deploy --only firestore:indexes"
+    "firestore:indexes": "firebase deploy --only firestore:indexes",
+    "test:smoke": "node scripts/smoke-test.mjs"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.3",

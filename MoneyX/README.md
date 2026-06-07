@@ -18,19 +18,32 @@ Personal expense tracker built for monthly salary budgeting in Bangladesh (BDT).
 
 ## Setup
 
-1. Copy `.env.example` to `.env` and add your Firebase config
-2. Install dependencies:
+1. Copy `MoneyX/.env.example` to `.env` at the **repo root** (one level above `MoneyX/`) or inside the `MoneyX/` app folder, and add your Firebase config.
+2. Install dependencies from the `MoneyX/` app folder:
 
 ```bash
+cd MoneyX
 npm install
 ```
 
-3. Deploy Firestore indexes (see `firestore.indexes.json`)
-4. Start dev server:
+3. Run smoke test (optional):
+
+```bash
+npm run test:smoke
+```
+
+4. Deploy Firestore indexes (see `firestore.indexes.json`)
+5. Start dev server:
 
 ```bash
 npm run dev
 ```
+
+App runs at http://localhost:3000
+
+### Vercel deployment
+
+Add all `VITE_*` variables from `.env.example` in **Vercel → Project Settings → Environment Variables**. Vercel does not use your local `.env` file.
 
 ## Build
 
