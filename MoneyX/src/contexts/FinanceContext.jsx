@@ -1,4 +1,4 @@
-import React, { createContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useState } from 'react';
 import {
     collection,
     doc,
@@ -8,15 +8,34 @@ import {
     query,
     where,
     getDocs,
-    orderBy,
     Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
-import { getMonthKey, getPreviousMonthKey, formatCurrency } from '@/lib/utils';
-import { calculateInitialExpendables } from '@/lib/calculations';
+import { getMonthKey, getPreviousMonthKey } from '@/lib/utils';
+import { getBillOutstanding } from '@/lib/creditCard';
 
 export const FinanceContext = createContext(null);
+
+async function fetchBillOutstanding(userId, cardId, monthKey) {
+    const billRef = doc(db, `users/${userId}/creditCards/${cardId}/bills/${monthKey}`);
+    const billDoc = await getDoc(billRef);
+    if (!billDoc.exists()) return 0;
+    return getBillOutstanding(billDoc.data());
+}
+
+async function fetchLastMonthSavings(userId, currentMonthKey) {
+    const previousMonthKey = getPreviousMonthKey(currentMonthKey);
+    const prevMonthRef = doc(db, `users/${userId}/months/${previousMonthKey}`);
+    const prevMonthDoc = await getDoc(prevMonthRef);
+
+    if (!prevMonthDoc.exists()) return 0;
+
+    const prevData = prevMonthDoc.data();
+    if (!prevData.salaryReceived) return 0;
+
+    return Math.max(0, prevData.calculations?.currentExpendables || 0);
+}
 
 export const FinanceProvider = ({ children }) => {
     const { user } = useAuth();
@@ -24,18 +43,53 @@ export const FinanceProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // Load current month data
-    useEffect(() => {
+    const getFixedExpenses = useCallback(async () => {
+        if (!user) return [];
+        const q = query(
+            collection(db, `users/${user.uid}/fixedExpenses`),
+            where('isActive', '==', true)
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    }, [user]);
+
+    const getDPSAccounts = useCallback(async () => {
+        if (!user) return [];
+        const q = query(
+            collection(db, `users/${user.uid}/dpsAccounts`),
+            where('isActive', '==', true)
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    }, [user]);
+
+    const getCreditCards = useCallback(async () => {
+        if (!user) return [];
+        const q = query(
+            collection(db, `users/${user.uid}/creditCards`),
+            where('isActive', '==', true)
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    }, [user]);
+
+    const getFutureSavings = useCallback(async () => {
+        if (!user) return [];
+        const q = query(
+            collection(db, `users/${user.uid}/futureSavings`),
+            where('isActive', '==', true)
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    }, [user]);
+
+    const loadCurrentMonth = useCallback(async () => {
         if (!user) {
             setCurrentMonth(null);
             setLoading(false);
             return;
         }
 
-        loadCurrentMonth();
-    }, [user]);
-
-    const loadCurrentMonth = async () => {
         try {
             setLoading(true);
             setError(null);
@@ -50,7 +104,8 @@ export const FinanceProvider = ({ children }) => {
                     ...monthDoc.data(),
                 });
             } else {
-                // Create new month document
+                const lastMonthSavings = await fetchLastMonthSavings(user.uid, monthKey);
+
                 const newMonth = {
                     monthKey,
                     year: new Date().getFullYear(),
@@ -67,7 +122,7 @@ export const FinanceProvider = ({ children }) => {
                         initialExpendables: 0,
                         reservedAmount: 0,
                         currentExpendables: 0,
-                        lastMonthSavings: 0,
+                        lastMonthSavings,
                     },
                     statistics: {
                         totalDailyExpenses: 0,
@@ -88,295 +143,172 @@ export const FinanceProvider = ({ children }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
+
+    useEffect(() => {
+        loadCurrentMonth();
+    }, [loadCurrentMonth]);
 
     const updateMonthCalculations = async (updates) => {
-        try {
-            if (!user || !currentMonth) return;
+        if (!user || !currentMonth) return;
 
-            const monthRef = doc(db, `users/${user.uid}/months/${currentMonth.id}`);
-            await updateDoc(monthRef, {
-                ...updates,
-                updatedAt: Timestamp.now(),
-            });
+        const monthRef = doc(db, `users/${user.uid}/months/${currentMonth.id}`);
+        await updateDoc(monthRef, {
+            ...updates,
+            updatedAt: Timestamp.now(),
+        });
 
-            // Reload month data
-            await loadCurrentMonth();
-        } catch (err) {
-            console.error('Error updating month calculations:', err);
-            throw err;
-        }
+        await loadCurrentMonth();
     };
 
-    const setSalary = async (amount) => {
-        try {
-            if (!user) throw new Error('User not authenticated');
+    const computeTotals = async (monthKey) => {
+        const [fixedExpenses, dpsAccounts, creditCards, futureSavings] = await Promise.all([
+            getFixedExpenses(),
+            getDPSAccounts(),
+            getCreditCards(),
+            getFutureSavings(),
+        ]);
 
-            console.log('💰 Setting salary:', amount);
+        const totalFixedExpenses = fixedExpenses.reduce(
+            (sum, exp) => sum + (exp.amount || 0),
+            0
+        );
 
-            // STEP 1: Rollover credit card bills from previous month
-            await rolloverCreditCardBills();
+        const totalDPS = dpsAccounts.reduce(
+            (sum, dps) => sum + (dps.monthlyAmount || 0),
+            0
+        );
 
-            // STEP 2: Fetch all necessary data for calculation
-            const [fixedExpenses, dpsAccounts, creditCards] = await Promise.all([
-                getFixedExpenses(),
-                getDPSAccounts(),
-                getCreditCards(),
-            ]);
+        const billAmounts = await Promise.all(
+            creditCards.map(card => fetchBillOutstanding(user.uid, card.id, monthKey))
+        );
+        const totalCreditCardBills = billAmounts.reduce((sum, bill) => sum + bill, 0);
 
-            // Calculate Fixed Expenses total (only active ones)
-            const totalFixedExpenses = fixedExpenses
-                .filter(exp => exp.isActive)
-                .reduce((sum, exp) => sum + (exp.amount || 0), 0);
+        const totalFutureSavings = futureSavings.reduce(
+            (sum, saving) => sum + (saving.allocatedAmount || 0),
+            0
+        );
 
-            // Calculate DPS total (only active ones)
-            const totalDPS = dpsAccounts
-                .filter(dps => dps.isActive)
-                .reduce((sum, dps) => sum + (dps.monthlyAmount || 0), 0);
-
-            // STEP 3: Get credit card bills for current month (INCLUDING rolled over balances)
-            const monthKey = getMonthKey();
-            const creditCardBills = await Promise.all(
-                creditCards
-                    .filter(card => card.isActive)
-                    .map(async (card) => {
-                        const billRef = doc(db, `users/${user.uid}/creditCards/${card.id}/bills/${monthKey}`);
-                        const billDoc = await getDoc(billRef);
-
-                        if (billDoc.exists()) {
-                            const billData = billDoc.data();
-                            return billData.totalPending || 0;
-                        }
-                        return 0;
-                    })
-            );
-
-            const totalCreditCardBills = creditCardBills.reduce((sum, bill) => sum + bill, 0);
-
-            // STEP 4: Calculate expendables
-            // CORRECT FORMULA: Salary - (Fixed Expenses + DPS + Credit Card Bills)
-            const initialExpendables = amount - totalFixedExpenses - totalDPS - totalCreditCardBills;
-
-            // Get last month savings (TODO: implement if needed)
-            const lastMonthSavings = 0;
-
-            // STEP 5: Update month with ALL calculation details
-            await updateMonthCalculations({
-                salaryReceived: true,
-                salaryAmount: amount,
-                salaryReceivedDate: Timestamp.now(),
-                'calculations.totalFixedExpenses': totalFixedExpenses,
-                'calculations.totalDPSAmount': totalDPS,
-                'calculations.totalCreditCardBills': totalCreditCardBills,
-                'calculations.totalFutureSavings': 0, // Not deducted from expendables
-                'calculations.totalTemporaryExpenses': 0, // Not deducted from expendables
-                'calculations.initialExpendables': Math.max(0, initialExpendables),
-                'calculations.currentExpendables': Math.max(0, initialExpendables),
-                'calculations.reservedAmount': 0, // Reset reserved amount
-                'calculations.lastMonthSavings': lastMonthSavings,
-            });
-
-            console.log('✅ Salary set successfully:', {
-                salary: amount,
-                fixedExpenses: totalFixedExpenses,
-                dps: totalDPS,
-                creditCards: totalCreditCardBills,
-                initialExpendables: Math.max(0, initialExpendables),
-            });
-
-        } catch (err) {
-            console.error('❌ Error setting salary:', err);
-            throw err;
-        }
-    };
-
-    const recalculateExpendables = async () => {
-        try {
-            if (!user || !currentMonth || !currentMonth.salaryReceived) {
-                console.log('⚠️ Cannot recalculate: No salary set yet');
-                return;
-            }
-
-            console.log('🔄 Recalculating expendables...');
-
-            // Fetch all necessary data for calculation
-            const [fixedExpenses, dpsAccounts, creditCards] = await Promise.all([
-                getFixedExpenses(),
-                getDPSAccounts(),
-                getCreditCards(),
-            ]);
-
-            // Calculate Fixed Expenses total (only active ones)
-            const totalFixedExpenses = fixedExpenses
-                .filter(exp => exp.isActive)
-                .reduce((sum, exp) => sum + (exp.amount || 0), 0);
-
-            // Calculate DPS total (only active ones)
-            const totalDPS = dpsAccounts
-                .filter(dps => dps.isActive)
-                .reduce((sum, dps) => sum + (dps.monthlyAmount || 0), 0);
-
-            // Get credit card bills for current month (INCLUDING any rolled over balances)
-            const monthKey = getMonthKey();
-            const creditCardBills = await Promise.all(
-                creditCards
-                    .filter(card => card.isActive)
-                    .map(async (card) => {
-                        const billRef = doc(db, `users/${user.uid}/creditCards/${card.id}/bills/${monthKey}`);
-                        const billDoc = await getDoc(billRef);
-
-                        if (billDoc.exists()) {
-                            const billData = billDoc.data();
-                            return billData.totalPending || 0;
-                        }
-                        return 0;
-                    })
-            );
-
-            const totalCreditCardBills = creditCardBills.reduce((sum, bill) => sum + bill, 0);
-
-            // Calculate using EXISTING salary amount
-            const salaryAmount = currentMonth.salaryAmount;
-            const initialExpendables = salaryAmount - totalFixedExpenses - totalDPS - totalCreditCardBills;
-
-            // Calculate how much has been spent already
-            const currentSpent = currentMonth.calculations.initialExpendables - currentMonth.calculations.currentExpendables;
-
-            // Update month calculations while preserving current expendables properly
-            await updateMonthCalculations({
-                'calculations.totalFixedExpenses': totalFixedExpenses,
-                'calculations.totalDPSAmount': totalDPS,
-                'calculations.totalCreditCardBills': totalCreditCardBills,
-                'calculations.initialExpendables': Math.max(0, initialExpendables),
-                'calculations.currentExpendables': Math.max(0, initialExpendables - currentSpent),
-            });
-
-            console.log('✅ Recalculation complete:', {
-                salary: salaryAmount,
-                fixedExpenses: totalFixedExpenses,
-                dps: totalDPS,
-                creditCards: totalCreditCardBills,
-                initialExpendables: Math.max(0, initialExpendables),
-                currentExpendables: Math.max(0, initialExpendables - currentSpent),
-            });
-
-        } catch (err) {
-            console.error('❌ Error recalculating expendables:', err);
-            throw err;
-        }
+        return {
+            totalFixedExpenses,
+            totalDPS,
+            totalCreditCardBills,
+            totalFutureSavings,
+        };
     };
 
     const rolloverCreditCardBills = async () => {
-        try {
-            if (!user) return;
+        if (!user) return;
 
-            const currentMonthKey = getMonthKey();
-            const previousMonthKey = getPreviousMonthKey(currentMonthKey);
+        const currentMonthKey = getMonthKey();
+        const previousMonthKey = getPreviousMonthKey(currentMonthKey);
+        const creditCards = await getCreditCards();
 
-            console.log('🔄 Checking for credit card bill rollover...');
-            console.log('Previous month:', previousMonthKey);
-            console.log('Current month:', currentMonthKey);
+        for (const card of creditCards) {
+            const currentBillRef = doc(
+                db,
+                `users/${user.uid}/creditCards/${card.id}/bills/${currentMonthKey}`
+            );
+            const currentBillDoc = await getDoc(currentBillRef);
 
-            // Get all active credit cards
-            const creditCards = await getCreditCards();
+            if (currentBillDoc.exists()) continue;
 
-            for (const card of creditCards) {
-                // Check if current month bill already exists
-                const currentBillRef = doc(
-                    db,
-                    `users/${user.uid}/creditCards/${card.id}/bills/${currentMonthKey}`
-                );
-                const currentBillDoc = await getDoc(currentBillRef);
+            const previousBillRef = doc(
+                db,
+                `users/${user.uid}/creditCards/${card.id}/bills/${previousMonthKey}`
+            );
+            const previousBillDoc = await getDoc(previousBillRef);
 
-                // Skip if current month bill already exists (already rolled over or manually added)
-                if (currentBillDoc.exists()) {
-                    console.log(`✓ Bill for ${card.name} already exists for ${currentMonthKey}`);
-                    continue;
-                }
+            if (!previousBillDoc.exists()) continue;
 
-                // Get previous month's bill
-                const previousBillRef = doc(
-                    db,
-                    `users/${user.uid}/creditCards/${card.id}/bills/${previousMonthKey}`
-                );
-                const previousBillDoc = await getDoc(previousBillRef);
+            const previousBill = previousBillDoc.data();
+            const remainingBalance = getBillOutstanding(previousBill);
 
-                if (previousBillDoc.exists()) {
-                    const previousBill = previousBillDoc.data();
-                    const remainingBalance = previousBill.remainingBalance || previousBill.totalPending || 0;
-
-                    if (remainingBalance > 0) {
-                        // Create new month bill with carried forward balance
-                        await setDoc(currentBillRef, {
-                            monthKey: currentMonthKey,
-                            previousBill: remainingBalance, // Carry forward the remaining balance
-                            thisMonthTransactions: 0,
-                            totalPending: remainingBalance,
-                            paidAmount: 0,
-                            remainingBalance: remainingBalance,
-                            isPaidFull: false,
-                            carriedForward: true, // Flag to indicate this was carried forward
-                            carriedFromMonth: previousMonthKey,
-                            createdAt: Timestamp.now(),
-                            updatedAt: Timestamp.now(),
-                        });
-
-                        console.log(`✅ Rolled over ${formatCurrency(remainingBalance)} for ${card.name}`);
-                    } else {
-                        console.log(`✓ No pending balance for ${card.name}`);
-                    }
-                } else {
-                    console.log(`✓ No previous bill found for ${card.name}`);
-                }
+            if (remainingBalance > 0) {
+                await setDoc(currentBillRef, {
+                    monthKey: currentMonthKey,
+                    previousBill: remainingBalance,
+                    thisMonthTransactions: 0,
+                    totalPending: remainingBalance,
+                    paidAmount: 0,
+                    remainingBalance,
+                    isPaidFull: false,
+                    carriedForward: true,
+                    carriedFromMonth: previousMonthKey,
+                    createdAt: Timestamp.now(),
+                    updatedAt: Timestamp.now(),
+                });
             }
-
-            console.log('✅ Credit card rollover complete');
-        } catch (err) {
-            console.error('❌ Error rolling over credit card bills:', err);
-            // Don't throw - rollover failure shouldn't break salary setting
         }
     };
 
+    const setSalary = async (amount, { isUpdate = false } = {}) => {
+        if (!user) throw new Error('User not authenticated');
 
-    // Helper functions to fetch data
-    const getFixedExpenses = async () => {
-        if (!user) return [];
-        const q = query(
-            collection(db, `users/${user.uid}/fixedExpenses`),
-            where('isActive', '==', true)
-        );
-        const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const monthKey = getMonthKey();
+        const isFirstSalary = !currentMonth?.salaryReceived && !isUpdate;
+
+        if (isFirstSalary) {
+            await rolloverCreditCardBills();
+        }
+
+        const totals = await computeTotals(monthKey);
+        const initialExpendables =
+            amount - totals.totalFixedExpenses - totals.totalDPS - totals.totalCreditCardBills;
+
+        const lastMonthSavings = isFirstSalary
+            ? (currentMonth?.calculations?.lastMonthSavings ??
+              (await fetchLastMonthSavings(user.uid, monthKey)))
+            : (currentMonth?.calculations?.lastMonthSavings || 0);
+
+        let currentExpendables = Math.max(0, initialExpendables);
+        let reservedAmount = 0;
+
+        if (isUpdate && currentMonth?.salaryReceived) {
+            const prevInitial = currentMonth.calculations.initialExpendables || 0;
+            const prevCurrent = currentMonth.calculations.currentExpendables || 0;
+            const amountSpent = Math.max(0, prevInitial - prevCurrent);
+            currentExpendables = Math.max(0, initialExpendables - amountSpent);
+            reservedAmount = currentMonth.calculations.reservedAmount || 0;
+        }
+
+        await updateMonthCalculations({
+            salaryReceived: true,
+            salaryAmount: amount,
+            salaryReceivedDate: Timestamp.now(),
+            'calculations.totalFixedExpenses': totals.totalFixedExpenses,
+            'calculations.totalDPSAmount': totals.totalDPS,
+            'calculations.totalCreditCardBills': totals.totalCreditCardBills,
+            'calculations.totalFutureSavings': totals.totalFutureSavings,
+            'calculations.totalTemporaryExpenses': 0,
+            'calculations.initialExpendables': Math.max(0, initialExpendables),
+            'calculations.currentExpendables': currentExpendables,
+            'calculations.reservedAmount': reservedAmount,
+            'calculations.lastMonthSavings': lastMonthSavings,
+        });
     };
 
-    const getDPSAccounts = async () => {
-        if (!user) return [];
-        const q = query(
-            collection(db, `users/${user.uid}/dpsAccounts`),
-            where('isActive', '==', true)
-        );
-        const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    };
+    const recalculateExpendables = async () => {
+        if (!user || !currentMonth || !currentMonth.salaryReceived) return;
 
-    const getCreditCards = async () => {
-        if (!user) return [];
-        const q = query(
-            collection(db, `users/${user.uid}/creditCards`),
-            where('isActive', '==', true)
-        );
-        const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    };
+        const monthKey = getMonthKey();
+        const totals = await computeTotals(monthKey);
+        const salaryAmount = currentMonth.salaryAmount;
+        const initialExpendables =
+            salaryAmount - totals.totalFixedExpenses - totals.totalDPS - totals.totalCreditCardBills;
 
-    const getFutureSavings = async () => {
-        if (!user) return [];
-        const q = query(
-            collection(db, `users/${user.uid}/futureSavings`),
-            where('isActive', '==', true)
-        );
-        const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const prevInitial = currentMonth.calculations.initialExpendables || 0;
+        const prevCurrent = currentMonth.calculations.currentExpendables || 0;
+        const amountSpent = Math.max(0, prevInitial - prevCurrent);
+
+        await updateMonthCalculations({
+            'calculations.totalFixedExpenses': totals.totalFixedExpenses,
+            'calculations.totalDPSAmount': totals.totalDPS,
+            'calculations.totalCreditCardBills': totals.totalCreditCardBills,
+            'calculations.totalFutureSavings': totals.totalFutureSavings,
+            'calculations.initialExpendables': Math.max(0, initialExpendables),
+            'calculations.currentExpendables': Math.max(0, initialExpendables - amountSpent),
+        });
     };
 
     const value = {
@@ -387,7 +319,7 @@ export const FinanceProvider = ({ children }) => {
         updateMonthCalculations,
         refreshMonth: loadCurrentMonth,
         recalculateExpendables,
-        rolloverCreditCardBills
+        rolloverCreditCardBills,
     };
 
     return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;

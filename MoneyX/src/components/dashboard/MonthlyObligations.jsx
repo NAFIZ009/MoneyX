@@ -7,6 +7,7 @@ import { collection, query, where, getDocs, doc, setDoc, getDoc, updateDoc, incr
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { useFinance } from '@/hooks/useFinance';
+import { useToast } from '@/components/common/Toast';
 import { formatCurrency, getMonthKey } from '@/lib/utils';
 import { Search, ChevronDown, ChevronUp, Wallet, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ import { PaymentMethodDialog } from '@/components/dashboard/PaymentMethodDialog'
 export const MonthlyObligations = () => {
   const { user } = useAuth();
   const { currentMonth, updateMonthCalculations } = useFinance();
+  const toast = useToast();
   const [obligations, setObligations] = useState([]);
   const [creditCards, setCreditCards] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -193,6 +195,7 @@ export const MonthlyObligations = () => {
           await updateDoc(billRef, {
             thisMonthTransactions: increment(selectedObligation.amount),
             totalPending: increment(selectedObligation.amount),
+            remainingBalance: increment(selectedObligation.amount),
             updatedAt: Timestamp.now(),
           });
         } else {
@@ -228,7 +231,7 @@ export const MonthlyObligations = () => {
         )
       );
       
-      alert('Failed to record payment. Please try again.');
+      toast.error('Failed to record payment. Please try again.');
     }
   };
 
@@ -271,6 +274,7 @@ export const MonthlyObligations = () => {
         await updateDoc(billRef, {
           thisMonthTransactions: increment(-obligation.amount),
           totalPending: increment(-obligation.amount),
+          remainingBalance: increment(-obligation.amount),
           updatedAt: Timestamp.now(),
         });
 
@@ -291,7 +295,7 @@ export const MonthlyObligations = () => {
         )
       );
       
-      alert('Failed to revert payment. Please try again.');
+      toast.error('Failed to revert payment. Please try again.');
     }
   };
 
@@ -406,7 +410,7 @@ export const MonthlyObligations = () => {
             ) : (
               displayedObligations.map((obligation) => (
                 <div
-                  key={obligation.id}
+                  key={`${obligation.type}-${obligation.id}`}
                   className="flex items-center justify-between p-3 bg-muted rounded-lg hover:bg-muted/80 transition-colors"
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">

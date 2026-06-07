@@ -183,6 +183,9 @@ export const LoanAllocationDialog = ({
       selectedObligations,
       selectedCards,
       allocation,
+      obligationDetails: obligations.filter((o) =>
+        selectedObligations.includes(o.id)
+      ),
     });
     onOpenChange(false);
   };

@@ -14,7 +14,7 @@ import { useFinance } from '@/hooks/useFinance';
 import { formatCurrency, formatDate, getMonthKey } from '@/lib/utils';
 import { Plus, Trash2, Wallet, DollarSign, Calendar, TrendingDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { doc, setDoc, updateDoc, increment, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, increment, getDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -87,31 +87,24 @@ export const PersonalLoanManager = () => {
       // 3. Pay selected obligations
       if (allocation.selectedObligations.length > 0) {
         for (const obligationId of allocation.selectedObligations) {
-          // Mark as paid (you'll need to know if it's expense or dps)
-          // For now, we'll try both paths
-          try {
-            await setDoc(
-              doc(db, `users/${user.uid}/fixedExpenses/${obligationId}/payments/${monthKey}`),
-              {
-                monthKey,
-                isPaid: true,
-                paidDate: Timestamp.now(),
-                paymentMethod: 'loan',
-                createdAt: Timestamp.now(),
-              }
-            );
-          } catch (e) {
-            await setDoc(
-              doc(db, `users/${user.uid}/dpsAccounts/${obligationId}/payments/${monthKey}`),
-              {
-                monthKey,
-                isPaid: true,
-                paidDate: Timestamp.now(),
-                paymentMethod: 'loan',
-                createdAt: Timestamp.now(),
-              }
-            );
-          }
+          const obligation = allocation.obligationDetails?.find(o => o.id === obligationId);
+          if (!obligation) continue;
+
+          const collectionPath =
+            obligation.type === 'dps' ? 'dpsAccounts' : 'fixedExpenses';
+
+          await setDoc(
+            doc(db, `users/${user.uid}/${collectionPath}/${obligationId}/payments/${monthKey}`),
+            {
+              monthKey,
+              isPaid: true,
+              paidDate: Timestamp.now(),
+              amount: obligation.amount,
+              paymentMethod: 'loan',
+              createdAt: Timestamp.now(),
+              updatedAt: Timestamp.now(),
+            }
+          );
         }
       }
 

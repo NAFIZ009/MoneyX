@@ -12,7 +12,9 @@ import { useToast } from '@/components/common/Toast';
 import { collection, query, where, getDocs, addDoc, updateDoc, doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
+import { useFinance } from '@/hooks/useFinance';
 import { formatCurrency, getMonthKey } from '@/lib/utils';
+import { getBillOutstanding } from '@/lib/creditCard';
 import { Plus, Trash2, CreditCard, DollarSign, FileText, Edit2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -28,6 +30,7 @@ const CARD_COLORS = [
 
 export const CreditCardManager = () => {
   const { user } = useAuth();
+  const { recalculateExpendables } = useFinance();
   const toast = useToast();
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -174,6 +177,7 @@ export const CreditCardManager = () => {
       setShowBillDialog(false);
       setSelectedCard(null);
       await loadCards();
+      await recalculateExpendables();
     } catch (error) {
       console.error('Error adding bill:', error);
       toast.error('Failed to add bill');
@@ -187,7 +191,7 @@ export const CreditCardManager = () => {
     }
 
     const amount = parseFloat(paymentAmount);
-    if (amount > selectedCard.bill.totalPending) {
+    if (amount > getBillOutstanding(selectedCard.bill)) {
       toast.error('Payment amount cannot exceed total pending');
       return;
     }
@@ -199,8 +203,9 @@ export const CreditCardManager = () => {
         `users/${user.uid}/creditCards/${selectedCard.id}/bills/${monthKey}`
       );
 
+      const outstanding = getBillOutstanding(selectedCard.bill);
       const newPaidAmount = (selectedCard.bill.paidAmount || 0) + amount;
-      const newRemainingBalance = selectedCard.bill.totalPending - newPaidAmount;
+      const newRemainingBalance = Math.max(0, outstanding - amount);
       const isPaidFull = newRemainingBalance === 0;
 
       await setDoc(
@@ -223,6 +228,7 @@ export const CreditCardManager = () => {
       setShowPaymentDialog(false);
       setSelectedCard(null);
       await loadCards();
+      await recalculateExpendables();
     } catch (error) {
       console.error('Error recording payment:', error);
       toast.error('Failed to record payment');
@@ -256,7 +262,10 @@ export const CreditCardManager = () => {
     setShowBillDialog(true);
   };
 
-  const totalPending = cards.reduce((sum, card) => sum + (card.bill?.totalPending || 0), 0);
+  const totalPending = cards.reduce(
+    (sum, card) => sum + getBillOutstanding(card.bill),
+    0
+  );
 
   if (loading) {
     return (
@@ -399,7 +408,7 @@ export const CreditCardManager = () => {
                   </div>
 
                   {/* Bill Details */}
-                  {card.bill.totalPending > 0 ? (
+                  {getBillOutstanding(card.bill) > 0 ? (
                     <>
                       {/* Show carried forward notice if applicable */}
                       {card.bill.carriedForward && card.bill.previousBill > 0 && (
@@ -417,7 +426,7 @@ export const CreditCardManager = () => {
                         <div className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Total Pending</span>
                           <span className="font-semibold">
-                            {formatCurrency(card.bill.totalPending)}
+                            {formatCurrency(getBillOutstanding(card.bill))}
                           </span>
                         </div>
                         {card.bill.previousBill > 0 && (
@@ -563,7 +572,7 @@ export const CreditCardManager = () => {
           <DialogHeader>
             <DialogTitle>Pay Credit Card Bill</DialogTitle>
             <DialogDescription>
-              {selectedCard?.name} - {formatCurrency(selectedCard?.bill?.totalPending || 0)}{' '}
+              {selectedCard?.name} - {formatCurrency(getBillOutstanding(selectedCard?.bill))}{' '}
               pending
             </DialogDescription>
           </DialogHeader>

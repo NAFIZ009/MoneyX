@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, setDoc, collection, addDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, collection, addDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
+import { useFinance } from '@/hooks/useFinance';
 import { useToast } from '@/components/common/Toast';
 import { OnboardingLayout } from '@/components/onboarding/OnboardingLayout';
 import { StepSalary } from '@/components/onboarding/StepSalary';
@@ -16,9 +17,9 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const { setSalary } = useFinance();
   const toast = useToast();
-  const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     salary: {},
@@ -55,100 +56,113 @@ export default function Onboarding() {
     try {
       setLoading(true);
 
-      // Save all onboarding data to Firestore
       const userRef = doc(db, 'users', user.uid);
 
-      // Update user settings
+      const salarySettings = formData.salary?.isFixed && formData.salary?.fixedAmount
+        ? {
+            isFixed: true,
+            amount: parseFloat(formData.salary.fixedAmount),
+          }
+        : { isFixed: false, amount: null };
+
+      if (formData.expenses?.length > 0) {
+        await Promise.all(
+          formData.expenses.map((expense) =>
+            addDoc(collection(db, `users/${user.uid}/fixedExpenses`), {
+              name: expense.name,
+              amount: expense.amount,
+              type: 'fixed',
+              isActive: true,
+              createdAt: Timestamp.now(),
+              updatedAt: Timestamp.now(),
+            })
+          )
+        );
+      }
+
+      if (formData.dpsAccounts?.length > 0) {
+        await Promise.all(
+          formData.dpsAccounts.map((dps) =>
+            addDoc(collection(db, `users/${user.uid}/dpsAccounts`), {
+              name: dps.name,
+              monthlyAmount: dps.monthlyAmount,
+              installmentsPaidBefore: dps.installmentsPaid || 0,
+              totalInstallments: dps.totalInstallments || 60,
+              interestRate: dps.interestRate || 0,
+              startDate: Timestamp.now(),
+              maturityDate: Timestamp.fromDate(
+                new Date(Date.now() + (dps.totalInstallments || 60) * 30 * 24 * 60 * 60 * 1000)
+              ),
+              isActive: true,
+              createdAt: Timestamp.now(),
+              updatedAt: Timestamp.now(),
+            })
+          )
+        );
+      }
+
+      if (formData.fdAccounts?.length > 0) {
+        await Promise.all(
+          formData.fdAccounts.map((fd) =>
+            addDoc(collection(db, `users/${user.uid}/fdAccounts`), {
+              name: fd.name,
+              amount: fd.amount,
+              interestRate: fd.interestRate || 0,
+              termYears: fd.termYears || 1,
+              depositDate: Timestamp.now(),
+              maturityDate: Timestamp.fromDate(
+                new Date(Date.now() + (fd.termYears || 1) * 365 * 24 * 60 * 60 * 1000)
+              ),
+              isActive: true,
+              createdAt: Timestamp.now(),
+              updatedAt: Timestamp.now(),
+            })
+          )
+        );
+      }
+
+      if (formData.cards?.length > 0) {
+        await Promise.all(
+          formData.cards.map((card) =>
+            addDoc(collection(db, `users/${user.uid}/creditCards`), {
+              name: card.name,
+              limit: card.limit,
+              color: card.color,
+              isActive: true,
+              createdAt: Timestamp.now(),
+              updatedAt: Timestamp.now(),
+            })
+          )
+        );
+      }
+
+      if (formData.savings?.length > 0) {
+        await Promise.all(
+          formData.savings.map((saving) =>
+            addDoc(collection(db, `users/${user.uid}/futureSavings`), {
+              name: saving.name,
+              targetAmount: saving.amount,
+              allocatedAmount: saving.amount,
+              targetMonth: saving.targetMonth || new Date().toISOString().slice(0, 7),
+              isActive: true,
+              createdAt: Timestamp.now(),
+              updatedAt: Timestamp.now(),
+            })
+          )
+        );
+      }
+
       await updateDoc(userRef, {
         'settings.onboardingComplete': true,
+        'settings.defaultSalary': salarySettings,
         updatedAt: Timestamp.now(),
       });
 
-      // Save fixed expenses
-      if (formData.expenses && formData.expenses.length > 0) {
-        const expensesPromises = formData.expenses.map((expense) =>
-          addDoc(collection(db, `users/${user.uid}/fixedExpenses`), {
-            name: expense.name,
-            amount: expense.amount,
-            type: 'fixed',
-            isActive: true,
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-          })
-        );
-        await Promise.all(expensesPromises);
+      if (salarySettings.isFixed && salarySettings.amount > 0) {
+        await setSalary(salarySettings.amount);
       }
 
-      // Save DPS accounts
-      if (formData.dpsAccounts && formData.dpsAccounts.length > 0) {
-        const dpsPromises = formData.dpsAccounts.map((dps) =>
-          addDoc(collection(db, `users/${user.uid}/dpsAccounts`), {
-            name: dps.name,
-            monthlyAmount: dps.monthlyAmount,
-            installmentsPaidBefore: dps.installmentsPaid,
-            totalInstallments: 60, // Default 5 years
-            startDate: Timestamp.now(),
-            maturityDate: Timestamp.fromDate(
-              new Date(Date.now() + 60 * 30 * 24 * 60 * 60 * 1000)
-            ),
-            isActive: true,
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-          })
-        );
-        await Promise.all(dpsPromises);
-      }
-
-      // Save FD accounts
-      if (formData.fdAccounts && formData.fdAccounts.length > 0) {
-        const fdPromises = formData.fdAccounts.map((fd) =>
-          addDoc(collection(db, `users/${user.uid}/fdAccounts`), {
-            name: fd.name,
-            amount: fd.amount,
-            interestRate: 0,
-            depositDate: Timestamp.now(),
-            maturityDate: Timestamp.fromDate(
-              new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-            ),
-            isActive: true,
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-          })
-        );
-        await Promise.all(fdPromises);
-      }
-
-      // Save credit cards
-      if (formData.cards && formData.cards.length > 0) {
-        const cardsPromises = formData.cards.map((card) =>
-          addDoc(collection(db, `users/${user.uid}/creditCards`), {
-            name: card.name,
-            limit: card.limit,
-            color: card.color,
-            isActive: true,
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-          })
-        );
-        await Promise.all(cardsPromises);
-      }
-
-      // Save future savings
-      if (formData.savings && formData.savings.length > 0) {
-        const savingsPromises = formData.savings.map((saving) =>
-          addDoc(collection(db, `users/${user.uid}/futureSavings`), {
-            name: saving.name,
-            targetAmount: saving.amount,
-            allocatedAmount: saving.amount,
-            targetMonth: new Date().toISOString().slice(0, 7),
-            isActive: true,
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-          })
-        );
-        await Promise.all(savingsPromises);
-      }
-
+      await refreshUser();
       toast.success('Setup completed successfully!');
       navigate('/dashboard');
     } catch (error) {

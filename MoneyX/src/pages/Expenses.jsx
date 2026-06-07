@@ -6,14 +6,17 @@ import { ExpenseFilters } from '@/components/expenses/ExpenseFilters';
 import { CategoryBreakdown } from '@/components/expenses/CategoryBreakdown';
 import { Button } from '@/components/ui/button';
 import { useExpenses } from '@/hooks/useExpenses';
+import { useFinance } from '@/hooks/useFinance';
 import { PageLoader } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
-import { Plus, Receipt } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Plus, Receipt, Info } from 'lucide-react';
 import { QuickAddExpense } from '@/components/dashboard/QuickAddExpense';
 import { cn } from '@/lib/utils';
 
 export default function Expenses() {
   const { expenses, loading } = useExpenses();
+  const { currentMonth } = useFinance();
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [activeTab, setActiveTab] = useState('list');
   const [filters, setFilters] = useState({
@@ -59,6 +62,8 @@ export default function Expenses() {
     return () => observer.disconnect();
   }, []);
 
+  const hasSalary = currentMonth?.salaryReceived;
+
   if (loading) {
     return <PageLoader />;
   }
@@ -68,27 +73,41 @@ export default function Expenses() {
       <Navbar
         title="Expenses"
         actions={
-          <Button
-            size="icon"
-            onClick={() => setShowAddExpense(true)}
-            className="h-9 w-9"
-          >
-            <Plus className="h-5 w-5" />
-          </Button>
+          hasSalary ? (
+            <Button
+              size="icon"
+              onClick={() => setShowAddExpense(true)}
+              className="h-9 w-9"
+            >
+              <Plus className="h-5 w-5" />
+            </Button>
+          ) : null
         }
       />
 
       <main className="max-w-lg mx-auto">
+        {!hasSalary && (
+          <Alert className="m-4">
+            <Info className="h-4 w-4" />
+            <AlertTitle>Salary Required</AlertTitle>
+            <AlertDescription>
+              Add your salary in Management before tracking expenses.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {expenses.length === 0 ? (
           <EmptyState
             icon={Receipt}
             title="No expenses yet"
             description="Start tracking your expenses by adding your first transaction"
             action={
-              <Button onClick={() => setShowAddExpense(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Expense
-              </Button>
+              hasSalary ? (
+                <Button onClick={() => setShowAddExpense(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Expense
+                </Button>
+              ) : null
             }
             className="mt-20"
           />

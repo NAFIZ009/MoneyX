@@ -83,7 +83,10 @@ export default function Settings() {
                   <p className="text-sm text-muted-foreground">Member Since</p>
                   <p className="font-medium">
                     {user?.createdAt
-                      ? formatDate(user.createdAt.toDate?.() || new Date())
+                      ? formatDate(
+                          user.createdAt.toDate?.() || user.createdAt,
+                          'short'
+                        )
                       : 'N/A'}
                   </p>
                 </div>
@@ -96,7 +99,7 @@ export default function Settings() {
         <Card>
           <CardHeader>
             <CardTitle>App Information</CardTitle>
-            <CardDescription>About Finance Tracker</CardDescription>
+            <CardDescription>About MoneyX</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between">
@@ -196,9 +199,9 @@ export default function Settings() {
         <Card className="border-primary/20 bg-primary/5">
           <CardContent className="pt-6">
             <div className="text-center space-y-2">
-              <h3 className="font-semibold">💰 Finance Tracker</h3>
+              <h3 className="font-semibold">💰 MoneyX</h3>
               <p className="text-sm text-muted-foreground">
-                Your personal finance management companion
+                Your personal expense tracker for Bangladesh (BDT)
               </p>
               <p className="text-xs text-muted-foreground">
                 Built with React, Firebase & Tailwind CSS

@@ -9,6 +9,8 @@ import {
   where,
   orderBy,
   getDocs,
+  getDoc,
+  setDoc,
   Timestamp,
   increment,
 } from 'firebase/firestore';
@@ -16,15 +18,72 @@ import { db } from '@/lib/firebase';
 import { useAuth } from './useAuth';
 import { useFinance } from './useFinance';
 import { getMonthKey } from '@/lib/utils';
+import { getBillOutstanding } from '@/lib/creditCard';
+
+async function upsertCreditCardBillCharge(userId, creditCardId, monthKey, amount) {
+  const billRef = doc(
+    db,
+    `users/${userId}/creditCards/${creditCardId}/bills/${monthKey}`
+  );
+  const billDoc = await getDoc(billRef);
+
+  if (billDoc.exists()) {
+    const bill = billDoc.data();
+    const newTotalPending = (bill.totalPending || 0) + amount;
+    const newThisMonth = (bill.thisMonthTransactions || 0) + amount;
+    const newRemaining = getBillOutstanding(bill) + amount;
+
+    await updateDoc(billRef, {
+      thisMonthTransactions: newThisMonth,
+      totalPending: newTotalPending,
+      remainingBalance: newRemaining,
+      isPaidFull: false,
+      updatedAt: Timestamp.now(),
+    });
+  } else {
+    await setDoc(billRef, {
+      monthKey,
+      previousBill: 0,
+      thisMonthTransactions: amount,
+      totalPending: amount,
+      paidAmount: 0,
+      remainingBalance: amount,
+      isPaidFull: false,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+  }
+}
+
+async function reverseCreditCardBillCharge(userId, creditCardId, monthKey, amount) {
+  const billRef = doc(
+    db,
+    `users/${userId}/creditCards/${creditCardId}/bills/${monthKey}`
+  );
+  const billDoc = await getDoc(billRef);
+  if (!billDoc.exists()) return;
+
+  const bill = billDoc.data();
+  const newTotalPending = Math.max(0, (bill.totalPending || 0) - amount);
+  const newThisMonth = Math.max(0, (bill.thisMonthTransactions || 0) - amount);
+  const newRemaining = Math.max(0, getBillOutstanding(bill) - amount);
+
+  await updateDoc(billRef, {
+    thisMonthTransactions: newThisMonth,
+    totalPending: newTotalPending,
+    remainingBalance: newRemaining,
+    isPaidFull: newRemaining === 0,
+    updatedAt: Timestamp.now(),
+  });
+}
 
 export const useExpenses = () => {
   const { user } = useAuth();
-  const { currentMonth, updateMonthCalculations } = useFinance();
+  const { currentMonth, updateMonthCalculations, recalculateExpendables } = useFinance();
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Load expenses for current month
   useEffect(() => {
     if (!user || !currentMonth) {
       setExpenses([]);
@@ -48,12 +107,7 @@ export const useExpenses = () => {
       );
 
       const snapshot = await getDocs(q);
-      const expensesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-
-      setExpenses(expensesData);
+      setExpenses(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (err) {
       console.error('Error loading expenses:', err);
       setError(err.message);
@@ -63,128 +117,155 @@ export const useExpenses = () => {
   };
 
   const addExpense = async (expenseData) => {
-    try {
-      if (!user) throw new Error('User not authenticated');
+    if (!user) throw new Error('User not authenticated');
 
-      // UPDATED: Use custom date if provided, otherwise use current date
-      const expenseDate = expenseData.date 
-        ? new Date(expenseData.date + 'T12:00:00') // Add time to avoid timezone issues
-        : new Date();
-      
-      const monthKey = getMonthKey(expenseDate); // Get month key from expense date
+    const expenseDate = expenseData.date
+      ? new Date(expenseData.date + 'T12:00:00')
+      : new Date();
 
-      const newExpense = {
-        name: expenseData.name,
-        amount: parseFloat(expenseData.amount),
-        category: expenseData.category || 'others',
-        date: Timestamp.fromDate(expenseDate), // Use custom date
-        monthKey,
-        year: expenseDate.getFullYear(),
-        month: expenseDate.getMonth() + 1,
-        day: expenseDate.getDate(),
-        paymentMethod: {
-          type: expenseData.fromCreditCard ? 'creditCard' : 'cash',
-          creditCardId: expenseData.creditCardId || null,
-        },
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      };
+    const monthKey = getMonthKey(expenseDate);
+    const currentMonthKey = getMonthKey();
 
-      // Add expense to Firestore
-      const docRef = await addDoc(
-        collection(db, `users/${user.uid}/dailyExpenses`),
-        newExpense
-      );
-
-      // Update month calculations (only for current month)
-      const currentMonthKey = getMonthKey();
-      if (monthKey === currentMonthKey) {
-        if (expenseData.fromCreditCard) {
-          // Reserve amount from expendables and update credit card bill
-          await Promise.all([
-            updateMonthCalculations({
-              'calculations.reservedAmount': increment(newExpense.amount),
-              'calculations.currentExpendables': increment(-newExpense.amount),
-            }),
-            updateDoc(
-              doc(db, `users/${user.uid}/creditCards/${expenseData.creditCardId}/bills/${monthKey}`),
-              {
-                thisMonthTransactions: increment(newExpense.amount),
-                totalPending: increment(newExpense.amount),
-                updatedAt: Timestamp.now(),
-              }
-            ),
-          ]);
-        } else {
-          // Deduct from expendables
-          await updateMonthCalculations({
-            'calculations.currentExpendables': increment(-newExpense.amount),
-            'statistics.totalDailyExpenses': increment(newExpense.amount),
-            'statistics.expenseCount': increment(1),
-          });
-        }
-      }
-
-      // Reload expenses
-      await loadExpenses();
-
-      return { id: docRef.id, ...newExpense };
-    } catch (err) {
-      console.error('Error adding expense:', err);
-      throw err;
+    if (monthKey !== currentMonthKey) {
+      throw new Error('Expenses can only be added for the current month');
     }
+
+    if (!currentMonth?.salaryReceived) {
+      throw new Error('Please add your salary before tracking expenses');
+    }
+
+    const newExpense = {
+      name: expenseData.name,
+      amount: parseFloat(expenseData.amount),
+      category: expenseData.category || 'others',
+      date: Timestamp.fromDate(expenseDate),
+      monthKey,
+      year: expenseDate.getFullYear(),
+      month: expenseDate.getMonth() + 1,
+      day: expenseDate.getDate(),
+      paymentMethod: {
+        type: expenseData.fromCreditCard ? 'creditCard' : 'cash',
+        creditCardId: expenseData.creditCardId || null,
+      },
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    };
+
+    const docRef = await addDoc(
+      collection(db, `users/${user.uid}/dailyExpenses`),
+      newExpense
+    );
+
+    if (expenseData.fromCreditCard) {
+      await Promise.all([
+        updateMonthCalculations({
+          'calculations.reservedAmount': increment(newExpense.amount),
+          'calculations.currentExpendables': increment(-newExpense.amount),
+        }),
+        upsertCreditCardBillCharge(
+          user.uid,
+          expenseData.creditCardId,
+          monthKey,
+          newExpense.amount
+        ),
+      ]);
+    } else {
+      await updateMonthCalculations({
+        'calculations.currentExpendables': increment(-newExpense.amount),
+        'statistics.totalDailyExpenses': increment(newExpense.amount),
+        'statistics.expenseCount': increment(1),
+      });
+    }
+
+    await loadExpenses();
+    return { id: docRef.id, ...newExpense };
   };
 
   const updateExpense = async (expenseId, updates) => {
-    try {
-      if (!user) throw new Error('User not authenticated');
+    if (!user) throw new Error('User not authenticated');
 
-      const expenseRef = doc(db, `users/${user.uid}/dailyExpenses/${expenseId}`);
-      await updateDoc(expenseRef, {
-        ...updates,
-        updatedAt: Timestamp.now(),
-      });
+    const expense = expenses.find(e => e.id === expenseId);
+    if (!expense) throw new Error('Expense not found');
 
-      await loadExpenses();
-    } catch (err) {
-      console.error('Error updating expense:', err);
-      throw err;
+    const newAmount = updates.amount != null ? parseFloat(updates.amount) : expense.amount;
+    const newName = updates.name ?? expense.name;
+    const newCategory = updates.category ?? expense.category;
+    const amountDiff = newAmount - expense.amount;
+    const currentMonthKey = getMonthKey();
+
+    await updateDoc(doc(db, `users/${user.uid}/dailyExpenses/${expenseId}`), {
+      name: newName,
+      amount: newAmount,
+      category: newCategory,
+      updatedAt: Timestamp.now(),
+    });
+
+    if (expense.monthKey === currentMonthKey && amountDiff !== 0) {
+      if (expense.paymentMethod?.type === 'creditCard' && expense.paymentMethod.creditCardId) {
+        await Promise.all([
+          updateMonthCalculations({
+            'calculations.reservedAmount': increment(amountDiff),
+            'calculations.currentExpendables': increment(-amountDiff),
+          }),
+          amountDiff > 0
+            ? upsertCreditCardBillCharge(
+                user.uid,
+                expense.paymentMethod.creditCardId,
+                expense.monthKey,
+                amountDiff
+              )
+            : reverseCreditCardBillCharge(
+                user.uid,
+                expense.paymentMethod.creditCardId,
+                expense.monthKey,
+                Math.abs(amountDiff)
+              ),
+        ]);
+      } else {
+        await updateMonthCalculations({
+          'calculations.currentExpendables': increment(-amountDiff),
+          'statistics.totalDailyExpenses': increment(amountDiff),
+        });
+      }
     }
+
+    await loadExpenses();
   };
 
   const deleteExpense = async (expenseId) => {
-    try {
-      if (!user) throw new Error('User not authenticated');
+    if (!user) throw new Error('User not authenticated');
 
-      // Get expense data first
-      const expense = expenses.find(e => e.id === expenseId);
-      if (!expense) throw new Error('Expense not found');
+    const expense = expenses.find(e => e.id === expenseId);
+    if (!expense) throw new Error('Expense not found');
 
-      // Delete expense
-      await deleteDoc(doc(db, `users/${user.uid}/dailyExpenses/${expenseId}`));
+    await deleteDoc(doc(db, `users/${user.uid}/dailyExpenses/${expenseId}`));
 
-      // Update calculations (reverse the deductions) - only for current month
-      const currentMonthKey = getMonthKey();
-      if (expense.monthKey === currentMonthKey) {
-        if (expense.paymentMethod.type === 'creditCard') {
-          await updateMonthCalculations({
+    const currentMonthKey = getMonthKey();
+    if (expense.monthKey === currentMonthKey) {
+      if (expense.paymentMethod?.type === 'creditCard' && expense.paymentMethod.creditCardId) {
+        await Promise.all([
+          updateMonthCalculations({
             'calculations.reservedAmount': increment(-expense.amount),
             'calculations.currentExpendables': increment(expense.amount),
-          });
-        } else {
-          await updateMonthCalculations({
-            'calculations.currentExpendables': increment(expense.amount),
-            'statistics.totalDailyExpenses': increment(-expense.amount),
-            'statistics.expenseCount': increment(-1),
-          });
-        }
+          }),
+          reverseCreditCardBillCharge(
+            user.uid,
+            expense.paymentMethod.creditCardId,
+            expense.monthKey,
+            expense.amount
+          ),
+          recalculateExpendables(),
+        ]);
+      } else {
+        await updateMonthCalculations({
+          'calculations.currentExpendables': increment(expense.amount),
+          'statistics.totalDailyExpenses': increment(-expense.amount),
+          'statistics.expenseCount': increment(-1),
+        });
       }
-
-      await loadExpenses();
-    } catch (err) {
-      console.error('Error deleting expense:', err);
-      throw err;
     }
+
+    await loadExpenses();
   };
 
   return {

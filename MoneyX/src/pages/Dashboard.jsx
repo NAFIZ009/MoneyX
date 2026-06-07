@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BottomNav } from '@/components/common/BottomNav';
 import { Navbar } from '@/components/common/Navbar';
 import { useFinance } from '@/hooks/useFinance';
@@ -7,6 +8,7 @@ import { ExpenditureCard } from '@/components/dashboard/ExpenditureCard';
 import { QuickAddExpense } from '@/components/dashboard/QuickAddExpense';
 import { MonthlyObligations } from '@/components/dashboard/MonthlyObligations';
 import { CreditCardSummary } from '@/components/dashboard/CreditCardSummary';
+import { DebtSummary } from '@/components/dashboard/DebtSummary';
 import { LastMonthSavings } from '@/components/dashboard/LastMonthSavings';
 import { PageLoader } from '@/components/common/LoadingSpinner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -15,6 +17,7 @@ import { Info, Plus } from 'lucide-react';
 import { getMonthName, getMonthKey } from '@/lib/utils';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { currentMonth, loading } = useFinance();
   const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -50,7 +53,7 @@ export default function Dashboard() {
               <Button 
                 variant="link" 
                 className="px-0 h-auto font-semibold"
-                onClick={() => window.location.href = '/management'}
+                onClick={() => navigate('/management')}
               >
                 Add Salary →
               </Button>
@@ -80,6 +83,9 @@ export default function Dashboard() {
 
         {/* Monthly Obligations */}
         {hasSalary && <MonthlyObligations />}
+
+        {/* Debt Summary */}
+        {hasSalary && <DebtSummary />}
 
         {/* Credit Card Summary */}
         {hasSalary && <CreditCardSummary />}

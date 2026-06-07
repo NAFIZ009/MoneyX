@@ -9,15 +9,20 @@ import { PageLoader } from './components/common/LoadingSpinner';
 import { useAuth } from './hooks/useAuth';
 import { PWAInstallPrompt } from './components/common/PWAInstallPrompt';
 
-// Pages
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
 import Expenses from './pages/Expenses';
 import Management from './pages/Management';
-import Debts from './pages/Debts'; // NEW
+import Debts from './pages/Debts';
 import Settings from './pages/Settings';
+
+function getDefaultRoute(user) {
+  if (!user) return '/login';
+  if (!user.settings?.onboardingComplete) return '/onboarding';
+  return '/dashboard';
+}
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -26,24 +31,24 @@ function AppRoutes() {
     return <PageLoader />;
   }
 
+  const defaultRoute = getDefaultRoute(user);
+
   return (
     <>
       <Routes>
-        {/* Public Routes */}
         <Route
           path="/login"
-          element={user ? <Navigate to="/dashboard" replace /> : <Login />}
+          element={user ? <Navigate to={defaultRoute} replace /> : <Login />}
         />
         <Route
           path="/register"
-          element={user ? <Navigate to="/dashboard" replace /> : <Register />}
+          element={user ? <Navigate to={defaultRoute} replace /> : <Register />}
         />
 
-        {/* Protected Routes */}
         <Route
           path="/onboarding"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requireOnboarding={false}>
               <Onboarding />
             </ProtectedRoute>
           }
@@ -89,11 +94,8 @@ function AppRoutes() {
           }
         />
 
-        {/* Default Route */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-
-        {/* 404 Route */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Navigate to={defaultRoute} replace />} />
+        <Route path="*" element={<Navigate to={defaultRoute} replace />} />
       </Routes>
       <PWAInstallPrompt />
     </>

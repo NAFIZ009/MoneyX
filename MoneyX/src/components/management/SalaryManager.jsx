@@ -28,7 +28,7 @@ export const SalaryManager = () => {
 
         try {
             setLoading(true);
-            await setSalary(parseFloat(amount));
+            await setSalary(parseFloat(amount), { isUpdate: hasSalary });
             toast.success('Salary added successfully!');
             setAmount('');
         } catch (error) {

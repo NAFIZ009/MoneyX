@@ -2,20 +2,26 @@ import React, { useState, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useExpenses } from '@/hooks/useExpenses';
 import { useToast } from '@/components/common/Toast';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { formatCurrency, formatDate, isToday } from '@/lib/utils';
-import { getCategoryIcon, getCategoryLabel, getCategoryColor } from '@/lib/categories';
+import { getCategoryIcon, getCategoryLabel, getCategoryColor, EXPENSE_CATEGORIES } from '@/lib/categories';
 import { groupExpensesByDate } from '@/lib/calculations';
-import { Trash2, CreditCard, Wallet } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Trash2, CreditCard, Wallet, Edit2 } from 'lucide-react';
 
 export const ExpenseList = ({ filters }) => {
-  const { expenses, deleteExpense } = useExpenses();
+  const { expenses, deleteExpense, updateExpense } = useExpenses();
   const toast = useToast();
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [editExpense, setEditExpense] = useState(null);
+  const [editForm, setEditForm] = useState({ name: '', amount: '', category: 'others' });
+  const [saving, setSaving] = useState(false);
 
   // Filter expenses
   const filteredExpenses = useMemo(() => {
@@ -47,6 +53,11 @@ export const ExpenseList = ({ filters }) => {
           weekAgo.setDate(weekAgo.getDate() - 7);
           if (expenseDate < weekAgo) return false;
         }
+
+        if (filters.dateRange === 'month') {
+          const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+          if (expenseDate < startOfMonth) return false;
+        }
       }
 
       return true;
@@ -67,10 +78,40 @@ export const ExpenseList = ({ filters }) => {
       toast.success('Expense deleted successfully');
       setDeleteId(null);
     } catch (error) {
-      console.error('Error deleting expense:', error);
       toast.error('Failed to delete expense');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const openEdit = (expense) => {
+    setEditExpense(expense);
+    setEditForm({
+      name: expense.name,
+      amount: expense.amount.toString(),
+      category: expense.category || 'others',
+    });
+  };
+
+  const handleEditSave = async () => {
+    if (!editExpense || !editForm.name || !editForm.amount) {
+      toast.error('Please enter valid details');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await updateExpense(editExpense.id, {
+        name: editForm.name,
+        amount: editForm.amount,
+        category: editForm.category,
+      });
+      toast.success('Expense updated');
+      setEditExpense(null);
+    } catch (error) {
+      toast.error('Failed to update expense');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -167,6 +208,14 @@ export const ExpenseList = ({ filters }) => {
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="h-8 w-8"
+                            onClick={() => openEdit(expense)}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             className="h-8 w-8 text-destructive hover:text-destructive"
                             onClick={() => setDeleteId(expense.id)}
                           >
@@ -193,6 +242,51 @@ export const ExpenseList = ({ filters }) => {
         confirmText="Delete"
         isLoading={deleting}
       />
+
+      <Dialog open={!!editExpense} onOpenChange={(open) => !open && setEditExpense(null)}>
+        <DialogContent onClose={() => setEditExpense(null)}>
+          <DialogHeader>
+            <DialogTitle>Edit Expense</DialogTitle>
+            <DialogDescription>Update expense details</DialogDescription>
+          </DialogHeader>
+          <div className="p-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="editName">Description</Label>
+              <Input
+                id="editName"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editAmount">Amount</Label>
+              <Input
+                id="editAmount"
+                type="number"
+                value={editForm.amount}
+                onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editCategory">Category</Label>
+              <Select
+                id="editCategory"
+                value={editForm.category}
+                onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+              >
+                {EXPENSE_CATEGORIES.map((cat) => (
+                  <option key={cat.value} value={cat.value}>
+                    {cat.icon} {cat.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <Button className="w-full" onClick={handleEditSave} disabled={saving}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

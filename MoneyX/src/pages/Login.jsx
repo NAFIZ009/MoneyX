@@ -41,7 +41,7 @@ export default function Login() {
       setError('');
       await signIn(formData.email, formData.password);
       toast.success('Welcome back!');
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       console.error('Login error:', err);
       if (err.code === 'auth/invalid-credential') {

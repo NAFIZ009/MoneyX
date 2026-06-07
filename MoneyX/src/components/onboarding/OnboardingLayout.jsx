@@ -9,6 +9,7 @@ const STEPS = [
   { id: 4, title: 'FD' },
   { id: 5, title: 'Cards' },
   { id: 6, title: 'Savings' },
+  { id: 7, title: 'Done' },
 ];
 
 export const OnboardingLayout = ({ currentStep, children }) => {

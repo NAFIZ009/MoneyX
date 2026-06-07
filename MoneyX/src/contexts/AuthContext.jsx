@@ -5,7 +5,7 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 
 export const AuthContext = createContext(null);
@@ -60,11 +60,12 @@ export const AuthProvider = ({ children }) => {
       await setDoc(doc(db, 'users', userCredential.user.uid), {
         email,
         displayName,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
         settings: {
           currency: 'BDT',
           onboardingComplete: false,
+          defaultSalary: null,
         },
       });
 
@@ -96,6 +97,23 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const refreshUser = async () => {
+    if (!auth.currentUser) return;
+    try {
+      const userDocRef = doc(db, 'users', auth.currentUser.uid);
+      const userDoc = await getDoc(userDocRef);
+      if (userDoc.exists()) {
+        setUser({
+          uid: auth.currentUser.uid,
+          email: auth.currentUser.email,
+          ...userDoc.data(),
+        });
+      }
+    } catch (err) {
+      console.error('Error refreshing user profile:', err);
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -103,6 +121,7 @@ export const AuthProvider = ({ children }) => {
     signUp,
     signIn,
     signOut,
+    refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

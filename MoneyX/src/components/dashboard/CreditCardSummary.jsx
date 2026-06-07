@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { formatCurrency, getMonthKey } from '@/lib/utils';
+import { getBillOutstanding } from '@/lib/creditCard';
 import { CreditCard, ChevronRight } from 'lucide-react';
 
 export const CreditCardSummary = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +39,6 @@ export const CreditCardSummary = () => {
             `users/${user.uid}/creditCards/${cardDoc.id}/bills/${monthKey}`
           );
           const billDoc = await getDoc(billRef);
-
           const bill = billDoc.exists()
             ? billDoc.data()
             : { totalPending: 0, thisMonthTransactions: 0 };
@@ -44,7 +46,8 @@ export const CreditCardSummary = () => {
           return {
             id: cardDoc.id,
             ...card,
-            ...bill,
+            outstanding: getBillOutstanding(bill),
+            thisMonthTransactions: bill.thisMonthTransactions || 0,
           };
         })
       );
@@ -57,15 +60,11 @@ export const CreditCardSummary = () => {
     }
   };
 
-  if (loading) {
+  if (loading || cards.length === 0) {
     return null;
   }
 
-  if (cards.length === 0) {
-    return null;
-  }
-
-  const totalPending = cards.reduce((sum, card) => sum + (card.totalPending || 0), 0);
+  const totalPending = cards.reduce((sum, card) => sum + card.outstanding, 0);
 
   return (
     <Card>
@@ -99,7 +98,7 @@ export const CreditCardSummary = () => {
               <div>
                 <p className="font-medium text-sm">{card.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {formatCurrency(card.totalPending || 0)} pending
+                  {formatCurrency(card.outstanding)} pending
                 </p>
               </div>
             </div>
@@ -113,7 +112,7 @@ export const CreditCardSummary = () => {
 
         {cards.length > 2 && (
           <button
-            onClick={() => (window.location.href = '/management')}
+            onClick={() => navigate('/management')}
             className="w-full flex items-center justify-center gap-1 text-sm text-primary hover:underline py-2"
           >
             View all cards

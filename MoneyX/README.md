@@ -1,16 +1,47 @@
-# React + Vite
+# MoneyX
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Personal expense tracker built for monthly salary budgeting in Bangladesh (BDT).
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Expendables tracking** — Salary minus fixed expenses, DPS, and credit card bills
+- **Daily expenses** — Cash and credit card spending with categories
+- **Management** — Salary, fixed expenses, DPS, FD, credit cards, savings goals
+- **Debts** — Personal loans, EMIs, and money lent
+- **Onboarding** — Guided first-time setup with salary and recurring items
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React 19 + Vite
+- Firebase Auth & Firestore
+- Tailwind CSS
 
-## Expanding the ESLint configuration
+## Setup
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. Copy `.env.example` to `.env` and add your Firebase config
+2. Install dependencies:
+
+```bash
+npm install
+```
+
+3. Deploy Firestore indexes (see `firestore.indexes.json`)
+4. Start dev server:
+
+```bash
+npm run dev
+```
+
+## Build
+
+```bash
+npm run build
+```
+
+## Core Formula
+
+```
+Expendables = Salary − (Fixed Expenses + DPS + Outstanding Credit Card Bills)
+```
+
+Credit card purchases reserve from expendables and add to the card bill. Paying a bill reduces the outstanding balance used in calculations.

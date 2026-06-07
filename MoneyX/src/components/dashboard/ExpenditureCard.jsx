@@ -15,7 +15,11 @@ export const ExpenditureCard = () => {
   // Calculate today's spending
   const todaySpending = useMemo(() => {
     return expenses
-      .filter((expense) => isToday(expense.date.toDate()))
+      .filter(
+        (expense) =>
+          isToday(expense.date.toDate()) &&
+          expense.paymentMethod?.type !== 'creditCard'
+      )
       .reduce((sum, expense) => sum + expense.amount, 0);
   }, [expenses]);
 
@@ -56,7 +60,7 @@ export const ExpenditureCard = () => {
               </div>
               <div>
                 <p className="text-xs font-medium text-red-900 dark:text-red-100">
-                  Spent Today
+                  Spent Today (Cash)
                 </p>
                 <p className="text-2xl font-bold text-red-600 dark:text-red-400">
                   {formatCurrency(todaySpending)}

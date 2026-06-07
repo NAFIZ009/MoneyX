@@ -11,8 +11,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Finance Tracker - Manage Your Money',
-        short_name: 'Finance Tracker',
+        name: 'MoneyX - Expense Tracker',
+        short_name: 'MoneyX',
         description: 'Personal finance management app for tracking expenses, savings, and financial goals',
         theme_color: '#22c55e',
         background_color: '#ffffff',

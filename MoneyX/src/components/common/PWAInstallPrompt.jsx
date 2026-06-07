@@ -50,7 +50,7 @@ export const PWAInstallPrompt = () => {
         <AlertTitle>Install App</AlertTitle>
         <AlertDescription className="mt-2 space-y-2">
           <p className="text-sm">
-            Install Finance Tracker for a better experience! Quick access from your home screen.
+            Install MoneyX for quick access from your home screen.
           </p>
           <div className="flex gap-2">
             <Button onClick={handleInstall} size="sm" className="flex-1">

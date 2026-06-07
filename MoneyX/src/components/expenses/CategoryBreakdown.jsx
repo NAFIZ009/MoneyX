@@ -10,17 +10,22 @@ import { cn } from '@/lib/utils';
 export const CategoryBreakdown = () => {
   const { expenses } = useExpenses();
 
+  const cashExpenses = useMemo(
+    () => expenses.filter((e) => e.paymentMethod?.type !== 'creditCard'),
+    [expenses]
+  );
+
   const categoryData = useMemo(() => {
-    return groupExpensesByCategory(expenses);
-  }, [expenses]);
+    return groupExpensesByCategory(cashExpenses);
+  }, [cashExpenses]);
 
   const topSpendingDays = useMemo(() => {
-    return getTopSpendingDays(expenses, 5);
-  }, [expenses]);
+    return getTopSpendingDays(cashExpenses, 5);
+  }, [cashExpenses]);
 
-  const totalAmount = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+  const totalAmount = cashExpenses.reduce((sum, exp) => sum + exp.amount, 0);
 
-  if (expenses.length === 0) {
+  if (cashExpenses.length === 0) {
     return (
       <div className="text-center py-12">
         <p className="text-muted-foreground">No data to analyze yet</p>
@@ -34,14 +39,14 @@ export const CategoryBreakdown = () => {
       <Card>
         <CardHeader>
           <CardTitle>Spending Overview</CardTitle>
-          <CardDescription>This month's breakdown</CardDescription>
+          <CardDescription>Cash spending breakdown (excludes credit card)</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Total Spent</p>
             <p className="text-3xl font-bold">{formatCurrency(totalAmount)}</p>
             <p className="text-sm text-muted-foreground">
-              {expenses.length} transaction{expenses.length !== 1 ? 's' : ''}
+              {cashExpenses.length} transaction{cashExpenses.length !== 1 ? 's' : ''}
             </p>
           </div>
         </CardContent>
