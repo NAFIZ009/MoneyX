@@ -20,6 +20,7 @@ export default function Onboarding() {
   const { user, refreshUser } = useAuth();
   const { setSalary } = useFinance();
   const toast = useToast();
+  const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     salary: {},
